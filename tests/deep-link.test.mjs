@@ -35,7 +35,7 @@ test('opening the shelf URL lists everything', async () => {
   const { document } = await at('#/play');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
   );
   assert.equal(document.querySelectorAll('.game-stage').length, 0, 'nothing is running yet');
 });
@@ -108,6 +108,16 @@ test('the shelf card for a single-mirror entry plays immediately', async () => {
   assert.equal(app.window.location.hash, '#/play/1.11.2/1112-1');
   assert.ok(app.document.querySelector('.game-stage iframe'), 'the build is mounted');
   assert.equal(app.document.querySelectorAll('[data-mirror]').length, 0, 'no picker in between');
+});
+
+test('Ayuncraft plays from its own URL without a picker', async () => {
+  const app = await at('#/play/ayuncraft');
+  await app.settle();
+  assert.equal(app.window.location.hash, '#/play/ayuncraft/ayuncraft-1', 'it went straight to the build');
+  assert.equal(
+    app.document.querySelector('.game-stage iframe').getAttribute('src'),
+    'https://gx-launcher-v1.github.io/Ayuncraft/index.html',
+  );
 });
 
 test('a nonsense URL falls back instead of breaking', async () => {

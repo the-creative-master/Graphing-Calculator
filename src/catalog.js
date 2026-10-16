@@ -173,6 +173,14 @@ export const CLIENTS = [
       }),
     ],
   },
+  {
+    id: 'ayuncraft',
+    kind: 'client',
+    name: 'Ayuncraft',
+    subtitle: 'Lightweight client build',
+    badge: 'Client',
+    mirrors: [anyBuild('ayuncraft-1', 'Mirror 1', 'https://gx-launcher-v1.github.io/Ayuncraft/index.html')],
+  },
 ];
 
 /** Versions first, then clients. */

@@ -20,20 +20,20 @@ const urlsOf = (entry) => Object.fromEntries(entry.mirrors.map((mirror) => [mirr
 const jsCount = (entry) => entry.mirrors.filter((m) => m.engine === 'JS').length;
 const wasmCount = (entry) => entry.mirrors.filter((m) => m.engine === 'WASM').length;
 
-test('nine versions and two clients are on the shelf', () => {
+test('nine versions and three clients are on the shelf', () => {
   assert.deepEqual(
     VERSIONS.map((v) => v.id),
     ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5'],
   );
   assert.deepEqual(
     CLIENTS.map((c) => c.id),
-    ['astra', 'resent'],
+    ['astra', 'resent', 'ayuncraft'],
   );
   assert.deepEqual(
     CATALOG.map((entry) => entry.id),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
   );
-  assert.equal(countBuilds(), 38, '30 version builds + 8 client builds');
+  assert.equal(countBuilds(), 39, '30 version builds + 9 client builds');
 });
 
 test('entries are tagged by kind so the page can section them', () => {
@@ -126,7 +126,19 @@ test('EaglercraftZ 1.11.2 has a single mirror and skips the picker', () => {
 
 test('isDirectPlay is true for exactly the single-build entries', () => {
   const direct = CATALOG.filter(isDirectPlay).map((entry) => entry.id);
-  assert.deepEqual(direct, ['1.11.2']);
+  assert.deepEqual(direct, ['1.11.2', 'ayuncraft']);
+});
+
+test('Ayuncraft has its one build and plays straight away', () => {
+  const client = ENTRY_INDEX.get('ayuncraft');
+  assert.equal(client.kind, 'client');
+  assert.equal(client.name, 'Ayuncraft');
+  assert.deepEqual(urlsOf(client), {
+    'Mirror 1': 'https://gx-launcher-v1.github.io/Ayuncraft/index.html',
+  });
+  assert.equal(isDirectPlay(client), true, 'nothing to choose');
+  assert.equal(mirrorPath(client, client.mirrors[0]), '/play/ayuncraft/ayuncraft-1');
+  assert.equal(groupMirrors(client).length, 1, 'no engine split for a plain mirror');
 });
 
 test('1.13.2 has two JS builds and one WASM build', () => {

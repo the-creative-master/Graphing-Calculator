@@ -87,6 +87,25 @@ test('typing with nothing focused lands in the formula box', async () => {
   assert.deepEqual(visibleErrorText(), [], 'the sheet is clean again');
 });
 
+test('the code is heard wherever the keystrokes land', async () => {
+  // Keys of a swallowed attempt can end up somewhere that will not keep them —
+  // a colour swatch, a button, the page itself. None of that may cost a retype.
+  const swatch = document.querySelector('.expr-row__color');
+  swatch.focus();
+  assert.equal(document.activeElement, swatch, 'focused on a field that cannot hold text');
+
+  for (const key of 'MinecraftPls25-') {
+    document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  }
+  await settle();
+
+  assert.equal(hash(), '#/play', 'it still opened on the first pass');
+  assert.deepEqual(rowInputs().map((input) => input.value), ['', ''], 'and left nothing behind');
+
+  click('[data-action="calculator"]');
+  await settle();
+});
+
 test('the code unlocks on the first attempt, even from an unfocused page', async () => {
   blurAll();
   typeKeys('MinecraftPls25-');
@@ -106,6 +125,16 @@ test('a lost first keystroke does not force a retype', async () => {
   typeKeys('nMinecraftPls25-');
   await settle();
   assert.equal(hash(), '#/play', 'the code at the end of the field still counts');
+
+  // and the other way round: the opening keystroke never arrives at all, which
+  // is what happens to the first thing typed into an embedded view
+  click('[data-action="calculator"]');
+  await settle();
+  blurAll();
+  typeKeys('inecraftPls25-');
+  await settle();
+  assert.equal(hash(), '#/play', 'one attempt is still one attempt');
+  assert.deepEqual(rowInputs().map((input) => input.value), ['', ''], 'and it leaves nothing behind');
 
   click('[data-action="calculator"]');
   await settle();
@@ -127,7 +156,7 @@ test('the shelf lists versions and clients', () => {
   assert.deepEqual(sections, ['Versions', 'Clients']);
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
   );
   const text = play().textContent;
   for (const name of ['Astra Client', 'Resent Client', '1.5.2', '1.13.2', '1.15.2', '1.16.5']) {
@@ -212,7 +241,7 @@ test('the browser back button works (hash history)', async () => {
   assert.equal(hash(), '#/play', 'back to the shelf');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
   );
   click('[data-entry="1.5.2"]');
   await settle();
@@ -340,31 +369,73 @@ test('Fullscreen fills the window and requests nothing from the browser', async 
   assert.equal(document.body.classList.contains('is-immersive'), true, 'the view fills the window');
   assert.ok(play().classList.contains('is-immersive'));
   assert.equal(play().querySelector('[data-action="fullscreen"]').textContent, 'Exit fullscreen');
+  assert.equal(play().classList.contains('is-hud-hidden'), false, 'and the controls are on screen at once');
   assert.equal(asked, 0, 'the Fullscreen API is never used any more');
 });
 
-test('the controls get out of the way after a second — and come back on movement', async () => {
+test('fullscreen says where the way out is — then the message takes itself away', async () => {
+  const notice = () => play().querySelector('[data-notice]');
+  assert.equal(notice().hidden, false, 'the message is there when fullscreen opens');
+  assert.match(notice().textContent, /top-left/i, 'and it points at the button that leaves');
+
+  await wait(3400);
+  assert.equal(notice().hidden, true, 'it clears itself instead of hanging over the game');
+  assert.equal(notice().textContent, '', 'and leaves nothing behind');
+});
+
+test('the controls get out of the way after a second — and come back at the top edge', async () => {
   const hidden = () => play().classList.contains('is-hud-hidden');
+  assert.equal(hidden(), true, 'once nobody touches anything, they fade away');
 
-  // entering fullscreen shows the controls immediately
-  assert.equal(hidden(), false, 'controls are visible the moment you go fullscreen');
+  // The build covers the view and swallows its pointer events, so a mouse move
+  // anywhere else never arrives. The strip along the top edge is ours.
+  const strip = play().querySelector('[data-hotstrip]');
+  assert.ok(strip, 'there is a strip along the top edge');
+  strip.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+  assert.equal(hidden(), false, 'reaching the top edge brings the controls back');
+
+  // and they wait there while the pointer is on them
+  const hud = play().querySelector('.game-hud');
+  hud.dispatchEvent(new window.MouseEvent('pointerenter', { bubbles: true }));
+  await wait(1200);
+  assert.equal(hidden(), false, 'they stay put while you are using them');
+  hud.dispatchEvent(new window.MouseEvent('pointerleave', { bubbles: true }));
+  await wait(1200);
+  assert.equal(hidden(), true, 'and fade away once you are done with them');
+});
+
+test('a button in the bar cannot park it on the screen for good', async () => {
+  const hidden = () => play().classList.contains('is-hud-hidden');
+  const hud = play().querySelector('.game-hud');
+
+  play().querySelector('[data-hotstrip]').dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+  assert.equal(hidden(), false, 'controls are back');
+
+  const button = play().querySelector('[data-action="fullscreen"]');
+  button.focus();
+  assert.ok(hud.contains(document.activeElement), 'the button you clicked is still focused');
 
   await wait(1200);
-  assert.equal(hidden(), true, 'after a second of stillness they fade away');
+  assert.equal(hidden(), true, 'the bar still gets out of the way');
+  assert.equal(hud.contains(document.activeElement), false, 'and it lets go of the focus it was holding');
+});
 
-  // any mouse movement brings them back, then they fade again
-  document.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
-  assert.equal(hidden(), false, 'moving the pointer brings them back');
-  await wait(1200);
-  assert.equal(hidden(), true, 'and they fade again');
+test('there is always a way out of fullscreen', async () => {
+  assert.equal(play().classList.contains('is-hud-hidden'), true, 'controls are away — the state that used to trap');
 
-  // while hidden, the way out is still there: Esc works, and moving the mouse shows the button
-  document.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+  const exit = play().querySelector('[data-action="exit-immersive"]');
+  assert.ok(exit, 'the exit button sits on top of the build');
+  assert.match(exit.textContent, /exit fullscreen/i);
+
+  tap(exit);
   await settle();
-  assert.ok(play().querySelector('[data-action="fullscreen"]'), 'the exit button is present');
+  assert.equal(document.body.classList.contains('is-immersive'), false, 'and it works from there');
+  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'while staying on the build');
 });
 
 test('Esc shrinks it back to the windowed view', async () => {
+  click('[data-action="fullscreen"]');
+  await settle();
   assert.equal(document.body.classList.contains('is-immersive'), true, 'starting full');
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle();
@@ -432,6 +503,26 @@ test('a client build opens like any other', async () => {
   await settle();
   assert.equal(hash(), '#/play/resent/resent-3');
   assert.equal(play().querySelector('iframe').getAttribute('src'), 'https://client.eaglercraft.win/eagler-files/1.8/resent4.0/index.html');
+});
+
+test('Ayuncraft is on the shelf and plays its one build immediately', async () => {
+  click('[data-action="back"]'); // game -> builds
+  await settle();
+  click('[data-action="back"]'); // builds -> shelf
+  await settle();
+
+  const card = document.querySelector('[data-entry="ayuncraft"]');
+  assert.ok(card, 'it is on the shelf');
+  assert.match(card.textContent, /Ayuncraft/);
+
+  tap(card);
+  await settle();
+  assert.equal(hash(), '#/play/ayuncraft/ayuncraft-1', 'one build, so no picker in between');
+  assert.equal(document.querySelectorAll('[data-mirror]').length, 0);
+  assert.equal(
+    play().querySelector('iframe').getAttribute('src'),
+    'https://gx-launcher-v1.github.io/Ayuncraft/index.html',
+  );
 });
 
 /* ------------------------------------------------------------------ *

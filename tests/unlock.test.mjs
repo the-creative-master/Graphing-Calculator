@@ -41,18 +41,39 @@ test('the code counts when it is what you just typed', () => {
   // a stray character earlier in the box (a mis-key, or a keystroke that landed
   // before the field had focus) must not force a retype
   assert.ok(isUnlockCode('2x MinecraftPls25-'), 'code typed after other text');
-  assert.ok(isUnlockCode('nMinecraftPls25-'), 'one lost first keystroke');
+  assert.ok(isUnlockCode('nMinecraftPls25-'), 'one stray keystroke before it');
   // but a wrong tail is still not the code
   assert.ok(!isUnlockCode('MinecraftPls25-x'));
 });
 
-test('candidates cover every prefix but not a wrong character', () => {
+test('a keystroke lost before the code is not a retype either', () => {
+  // The first thing typed into an embedded view goes to the page around it, so
+  // an attempt can arrive missing its opening characters. The end of the code is
+  // still there, character for character.
+  assert.ok(isUnlockCode('inecraftPls25-'), 'one lost first keystroke');
+  assert.ok(isUnlockCode('inecraftpls25-'), 'and capitalisation still does not matter');
+  assert.ok(isUnlockCode('2x inecraftPls25-'), 'lost first keystroke after other text');
+  assert.ok(isUnlockCode('craftpls25-'), 'several lost first keystrokes');
+
+  // a fragment too short to be sure is not the code
+  assert.ok(!isUnlockCode('pls25-'), 'six characters is not enough');
+  assert.ok(!isUnlockCode('ftpls25-'), 'eight characters is not enough either');
+  assert.ok(!isUnlockCode('2x pls25-'), 'and not when it follows a formula');
+  assert.ok(!isUnlockCode('inecraftPls25'), 'the ending still has to be there');
+});
+
+test('candidates cover every prefix, and every start of a lost attempt', () => {
   assert.ok(isUnlockCandidate('M'));
   assert.ok(isUnlockCandidate('mine'));
   assert.ok(isUnlockCandidate(UNLOCK_CODE.slice(0, -1)));
   assert.ok(!isUnlockCandidate(''), 'empty input is not a candidate');
   assert.ok(!isUnlockCandidate('Q'), 'unrelated input is not a candidate');
   assert.ok(!isUnlockCandidate(UNLOCK_CODE.slice(0, -1) + 'X'));
+
+  // a lost opening keystroke leaves the rest of a run of the code behind
+  assert.ok(isUnlockCandidate('i'), 'the first character after a lost one');
+  assert.ok(isUnlockCandidate('inecraft'), 'a run from the middle of the code');
+  assert.ok(!isUnlockCandidate('inecraftx'), 'a wrong character ends it');
 });
 
 await summary('secret code');

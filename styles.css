@@ -1403,6 +1403,79 @@ button.crumb:hover {
   }
 }
 
+/* --- the parts of the running view that stay ours ------------------------ */
+
+/* A strip along the top edge. The build covers the rest of the view and eats
+   its pointer events, so this is what still hears the mouse: moving up there
+   brings the controls back, and the button that leaves is always on top. */
+.game-hotstrip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34px;
+  z-index: 4;
+  display: none;
+}
+
+.play.is-immersive .game-hotstrip {
+  display: block;
+}
+
+.immersive-exit {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  display: none;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border-strong);
+  background: rgba(6, 9, 16, 0.78);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+
+.play.is-immersive .immersive-exit {
+  display: inline-flex;
+}
+
+.immersive-exit:hover,
+.immersive-exit:focus-visible {
+  opacity: 1;
+}
+
+.game-notice {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  margin: 0;
+  max-width: min(88vw, 60ch);
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border-strong);
+  background: rgba(6, 9, 16, 0.88);
+  backdrop-filter: blur(10px);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-align: center;
+  pointer-events: none;
+  animation: pop-in 0.2s ease;
+}
+
+.play.is-immersive .game-notice {
+  top: 52px; /* clear of the strip and of the build's own top edge */
+}
+
 /* --- fullscreen / immersive --------------------------------------------- */
 
 /* Fullscreen is mocked: the running view simply becomes the whole window. */

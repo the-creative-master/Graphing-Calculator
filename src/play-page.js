@@ -53,6 +53,8 @@ export class PlayPage {
     this.keyTarget = 'page'; // 'game' | 'page'
     this.hintTimer = null;
     this.hudTimer = null;
+    this.noticeTimer = null;
+    this.nudgeTimer = null;
     this.nudgeShown = false;
     this.build();
   }
@@ -220,6 +222,8 @@ export class PlayPage {
         return this.router.back();
       case 'fullscreen':
         return this.toggleFullscreen();
+      case 'exit-immersive':
+        return this.setImmersive(false);
       case 'restart':
         return this.reloadFrame();
       case 'another':
@@ -387,7 +391,16 @@ export class PlayPage {
             referrerpolicy="no-referrer"
             loading="eager"
           ></iframe>
+          <!-- Everything below sits on top of the build, so the way out is
+               never behind it: a strip along the top edge that brings the
+               controls back, a button that always leaves, and a status line
+               that takes itself away. -->
+          <div class="game-hotstrip" data-hotstrip aria-hidden="true"></div>
+          <button type="button" class="immersive-exit" data-action="exit-immersive" aria-label="Leave fullscreen">
+            <span aria-hidden="true">⤢</span><span>Exit fullscreen</span>
+          </button>
           <button type="button" class="focus-toast" data-focus-toast hidden></button>
+          <p class="game-notice" data-notice role="status" hidden></p>
         </div>
       </div>
     `;
@@ -400,6 +413,17 @@ export class PlayPage {
     this.fullscreenBtn = this.body.querySelector('[data-action="fullscreen"]');
     this.keysBtn = this.body.querySelector('[data-keys]');
     this.hud = this.body.querySelector('.game-hud');
+    this.hotstrip = this.body.querySelector('[data-hotstrip]');
+    this.notice = this.body.querySelector('[data-notice]');
+
+    // The controls stay up for as long as the pointer is on them, and come back
+    // when the pointer reaches the top edge — the one strip of the running view
+    // that is ours rather than the build's, so it keeps working even when the
+    // build has swallowed every other pointer event.
+    this.hud?.addEventListener('pointerenter', () => this.holdHud());
+    this.hud?.addEventListener('pointerleave', () => this.showHud());
+    this.hotstrip?.addEventListener('pointerenter', () => this.showHud());
+    this.hotstrip?.addEventListener('pointermove', () => this.showHud());
 
     this.stage.classList.add('is-loading');
     this.stage.addEventListener('click', () => this.setKeyTarget('game'));
@@ -463,7 +487,7 @@ export class PlayPage {
   toggleKeyboard() {
     const next = this.keyTarget === 'game' ? 'page' : 'game';
     this.setKeyTarget(next);
-    this.onNotice?.(
+    this.setNotice(
       next === 'game'
         ? '🎮 Keyboard locked to the game'
         : '⌨️ Keyboard released — Esc exits fullscreen, K locks it again',
@@ -488,6 +512,10 @@ export class PlayPage {
     if (this.focusToast) {
       this.focusToast.textContent = '⌨️ Press K to send your keys to the game';
       this.focusToast.hidden = false;
+      clearTimeout(this.nudgeTimer);
+      this.nudgeTimer = setTimeout(() => {
+        if (this.focusToast) this.focusToast.hidden = true;
+      }, 6000);
     }
     this.nudgeShown = true;
   }
@@ -524,6 +552,10 @@ export class PlayPage {
     this.stage?.classList.add('is-loading');
     if (this.hint) this.hint.hidden = true;
     if (this.focusToast) this.focusToast.hidden = true;
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = null;
+    this.noticeTimer = null;
+    this.clearNotice();
     this.nudgeShown = false;
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => this.hint && (this.hint.hidden = false), LOAD_HINT_DELAY);
@@ -541,6 +573,9 @@ export class PlayPage {
     this.hintTimer = null;
     clearTimeout(this.hudTimer);
     this.hudTimer = null;
+    clearTimeout(this.nudgeTimer);
+    this.nudgeTimer = null;
+    this.clearNotice();
     if (this.frame) this.frame.src = 'about:blank';
     this.frame = null;
     this.loading = null;
@@ -550,6 +585,8 @@ export class PlayPage {
     this.fullscreenBtn = null;
     this.keysBtn = null;
     this.hud = null;
+    this.hotstrip = null;
+    this.notice = null;
     this.current = null;
     this.setImmersive(false);
     this.keyTarget = 'page';
@@ -578,12 +615,13 @@ export class PlayPage {
     this.root.classList.toggle('is-immersive', next);
 
     if (next) {
-      // show the controls so the way out is obvious, then get out of the way
+      // Show the controls, and say where the way out is — it is a button that
+      // stays on screen, not a key that the build has probably taken over.
       this.showHud();
-      setTimeout(() => this.onNotice?.('Press Esc to leave fullscreen — K switches your keyboard'), 0);
+      this.setNotice('Fullscreen — leave any time with the button in the top-left corner', 3200);
     } else {
-      clearTimeout(this.hudTimer);
-      this.setHudHidden(false);
+      this.holdHud();
+      this.clearNotice();
     }
 
     this.syncControls();
@@ -592,13 +630,58 @@ export class PlayPage {
   /** Bring the controls back (used on entry and on pointer movement). */
   showHud() {
     clearTimeout(this.hudTimer);
+    this.hudTimer = null;
     this.setHudHidden(false);
     if (!this.immersive) return;
     this.hudTimer = setTimeout(() => this.setHudHidden(true), HUD_HIDE_DELAY);
   }
 
+  /** Keep them up for as long as the pointer is on them. */
+  holdHud() {
+    clearTimeout(this.hudTimer);
+    this.hudTimer = null;
+    this.setHudHidden(false);
+  }
+
   setHudHidden(hidden) {
-    this.root.classList.toggle('is-hud-hidden', Boolean(hidden));
+    const faded = Boolean(hidden) && this.immersive;
+    this.root.classList.toggle('is-hud-hidden', faded);
+    if (!faded) return;
+
+    // Nothing may stay focused inside a control that has faded out. A focused
+    // button keeps its bar on screen, which is how the controls could end up
+    // parked over the game for good — and an invisible button is no way out of
+    // anything. Only safe to do while the page owns the keyboard: while the
+    // build does, focus belongs to the build.
+    const active = document.activeElement;
+    if (this.keyTarget === 'page' && active && this.hud?.contains(active)) active.blur?.();
+  }
+
+  /**
+   * Show a short line over the running view.
+   *
+   * It takes itself away — out of the DOM, not just out of sight. A message that
+   * lingers is worse than none at all: while the build has the keyboard, it is
+   * the one thing you cannot click away.
+   */
+  setNotice(message, ms = 2600) {
+    clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
+    if (!this.notice) return;
+    if (!message) return this.clearNotice();
+
+    this.notice.textContent = message;
+    this.notice.hidden = false;
+    this.noticeTimer = setTimeout(() => this.clearNotice(), ms);
+    return undefined;
+  }
+
+  clearNotice() {
+    clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
+    if (!this.notice) return;
+    this.notice.hidden = true;
+    this.notice.textContent = '';
   }
 
   syncControls() {

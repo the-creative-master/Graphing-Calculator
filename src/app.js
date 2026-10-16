@@ -74,7 +74,6 @@ const router = new Router({
   },
 });
 const playPage = new PlayPage(document.getElementById('play-page'), router);
-playPage.onNotice = (message) => showToast(message);
 
 const graph = new Graph(canvas, {
   onCursor: handleCursor,
@@ -94,12 +93,12 @@ restoreSession(); // may replace the above with a saved session
 playPage.attachDocumentListeners();
 router.start();
 
-// Put the caret in the formula box so "type and it graphs" needs zero clicks.
-// Skipped on touch devices, where focusing would pop the keyboard open — and
-// skipped when the URL points straight at a build.
-if (router.route.view === 'calculator' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
-  focusLastInput();
-}
+// Ask for the keyboard, then put the caret in the formula box, so "type and it
+// graphs" needs zero clicks. In an embedded page the keystroke you type first
+// belongs to whoever had focus before us, which is how a whole attempt at typing
+// used to disappear. (The caret is only claimed on devices with a real pointer —
+// focusing on a touch screen would pop the keyboard open by itself.)
+reclaimCaret();
 
 /* ------------------------------------------------------------------ *
  * Expression list
@@ -175,7 +174,7 @@ function renderExpressions() {
 
     input.addEventListener('input', () => {
       expression.source = input.value;
-      if (isUnlockCode(input.value)) return triggerUnlock(expression);
+      if (isUnlockCode(input.value)) return triggerUnlock();
       syncExpressions();
       persist();
     });
@@ -183,7 +182,7 @@ function renderExpressions() {
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        if (isUnlockCode(input.value)) return triggerUnlock(expression);
+        if (isUnlockCode(input.value)) return triggerUnlock();
         if (expression === state.expressions.at(-1) && input.value.trim()) addExpression();
         else focusNext(input, 1);
       }
@@ -448,6 +447,7 @@ window.addEventListener('resize', () => graph.resize());
  * @returns {boolean} true when the keystroke was consumed here
  */
 function typeIntoFormulaBox(event) {
+  if (event.defaultPrevented) return false; // already spoken for (e.g. the code)
   if (event.ctrlKey || event.metaKey || event.altKey) return false;
   if (event.key.length !== 1) return false; // printable characters only
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName ?? '')) return false;
@@ -469,11 +469,16 @@ function typeIntoFormulaBox(event) {
  * The whole point of this file (secret unlock)
  * ------------------------------------------------------------------ */
 
-function triggerUnlock(expression) {
-  // Drop the code so the calculator looks untouched afterwards.
-  expression.source = '';
-  const input = rowsHost.querySelector(`.expr-row[data-id="${expression.id}"] .expr-row__input`);
-  if (input) input.value = '';
+function triggerUnlock() {
+  // Drop the code so the calculator looks untouched afterwards. It can have
+  // landed in more than one row — or in none at all, when the keystrokes were
+  // picked up before they reached a field — so scrub every trace of it.
+  for (const item of state.expressions) {
+    if (item.source && isUnlockCode(item.source)) item.source = '';
+  }
+  for (const input of rowsHost.querySelectorAll('.expr-row__input')) {
+    if (isUnlockCode(input.value)) input.value = '';
+  }
   syncExpressions();
   persist();
 
@@ -546,8 +551,86 @@ graph.onViewport = (view) => {
   viewSaveTimer = setTimeout(persist, 400);
 };
 
+/* ------------------------------------------------------------------ *
+ * Focus, and where typing is heard
+ * ------------------------------------------------------------------ */
+
+/**
+ * Ask for the keyboard whenever we can.
+ *
+ * When the calculator is embedded in another page — a preview, a frame on a
+ * site — the keystroke typed before anything inside the frame is clicked goes to
+ * that other page, so a whole attempt at typing can vanish before any of our
+ * code runs. Asking for focus is free when it is refused, and it means the caret
+ * is usually already in the box by the time you type.
+ */
+function askForKeyboard() {
+  try {
+    window.focus();
+  } catch {
+    /* refused — the formula box is focused below instead */
+  }
+}
+
+/** Ask for the keyboard, then put the caret back in the formula box. */
+function reclaimCaret() {
+  askForKeyboard();
+  if (router.route.view !== 'calculator') return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '')) return;
+  if (!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) return;
+  focusLastInput();
+}
+
+window.addEventListener('load', reclaimCaret);
+window.addEventListener('pageshow', reclaimCaret);
+document.addEventListener('visibilitychange', () => !document.hidden && reclaimCaret());
+document.addEventListener('pointerdown', askForKeyboard, true);
+// The first time the pointer moves over us, take the keyboard too. By then the
+// person is plainly here, and it is the one nudge that keeps a first attempt at
+// typing from going to the page that embeds us.
+document.addEventListener('pointermove', reclaimCaret, { once: true, capture: true, passive: true });
+
+/**
+ * The tail of what has just been typed, anywhere on the page.
+ *
+ * Focus is not something a page can take for granted, and the keystroke that
+ * unlocks is too important to lose to a stray detail (a field that never got the
+ * character, a caret that ended up somewhere else, the first character going to
+ * the page that embeds us). So the code is recognised from the document level,
+ * in the capture phase — before any of our own handlers — and it counts as soon
+ * as it is what you just typed. Only the tail is compared, so an earlier
+ * character that went nowhere cannot force a retype.
+ */
+let typedTail = '';
+const TYPED_TAIL_LIMIT = 48;
+
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+    if (router.route.view !== 'calculator') {
+      typedTail = '';
+      return;
+    }
+    if (event.key === 'Backspace') {
+      typedTail = typedTail.slice(0, -1);
+      return;
+    }
+    if (event.key.length !== 1) return; // Enter, arrows, Tab, Shift…
+
+    typedTail = (typedTail + event.key).slice(-TYPED_TAIL_LIMIT);
+    if (!isUnlockCode(typedTail)) return;
+
+    typedTail = '';
+    event.preventDefault(); // this keystroke was the code, not a formula
+    triggerUnlock();
+  },
+  true,
+);
+
 /* Keyboard shortcuts */
 document.addEventListener('keydown', (event) => {
+  if (event.defaultPrevented) return; // already handled above
   // never steal keystrokes from an input the user is typing in
   const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '');
   if (inField || router.route.view !== 'calculator') return;
