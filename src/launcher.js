@@ -1,24 +1,21 @@
 /**
  * launcher.js
  * -----------
- * The overlay that appears when the secret unlock phrase is typed.
+ * The overlay that appears when the secret code is typed.
  *
  * Screen 1: pick a version.
- * Screen 2: pick a mirror (JS / WASM) for that version.
- * Screen 3: the chosen mirror, running in a full-size <iframe> plus a small
- *           control bar (reload / open in new tab / switch mirror / close).
- *
- * Nothing here fetches, downloads or hosts game files: iframes only.
+ * Screen 2: pick a build (JavaScript / WebAssembly) for it.
+ * Screen 3: the build, running full-size, with a control bar
+ *           (fullscreen / restart / another build / close).
  */
 import { VERSIONS, MIRROR_INDEX, VERSION_INDEX, groupMirrors, countMirrors } from './mirrors.js';
 
-const UNLOADED_HINT_DELAY = 9000;
+const SLOW_HINT_DELAY = 9000;
 
 export class Launcher {
   constructor(root) {
     this.root = root;
     this.lastFocus = null;
-    this.history = [];
     this.current = null; // { version, mirror }
     this.hintTimer = null;
     this.build();
@@ -33,14 +30,14 @@ export class Launcher {
     this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-modal', 'true');
-    this.root.setAttribute('aria-label', 'Version launcher');
+    this.root.setAttribute('aria-label', 'Versions');
     this.root.innerHTML = `
       <div class="launcher__backdrop" data-close></div>
       <div class="launcher__panel">
         <header class="launcher__header">
           <div class="launcher__titles">
-            <h2 class="launcher__title">Version launcher</h2>
-            <p class="launcher__subtitle" data-subtitle>${VERSIONS.length} versions · ${countMirrors()} mirrors · nothing hosted here</p>
+            <h2 class="launcher__title" data-title>Pick a version</h2>
+            <p class="launcher__subtitle" data-subtitle></p>
           </div>
           <div class="launcher__actions">
             <button type="button" class="icon-btn" data-action="back" hidden title="Back">←</button>
@@ -50,8 +47,8 @@ export class Launcher {
 
         <div class="launcher__body">
           <section class="launcher__screen" data-screen="versions" aria-label="Versions"></section>
-          <section class="launcher__screen" data-screen="mirrors" hidden aria-label="Mirrors"></section>
-          <section class="launcher__screen launcher__screen--game" data-screen="game" hidden aria-label="Game"></section>
+          <section class="launcher__screen" data-screen="mirrors" hidden aria-label="Builds"></section>
+          <section class="launcher__screen launcher__screen--game" data-screen="game" hidden aria-label="Running build"></section>
         </div>
       </div>
     `;
@@ -62,6 +59,7 @@ export class Launcher {
       mirrors: this.root.querySelector('[data-screen="mirrors"]'),
       game: this.root.querySelector('[data-screen="game"]'),
     };
+    this.titleEl = this.root.querySelector('[data-title]');
     this.subtitle = this.root.querySelector('[data-subtitle]');
     this.backBtn = this.root.querySelector('[data-action="back"]');
 
@@ -69,13 +67,12 @@ export class Launcher {
       const target = event.target.closest('[data-close], [data-action], [data-version], [data-mirror]');
       if (!target) return;
 
-      if (target.hasAttribute('data-close')) return this.close();
-      if (target.dataset.action === 'close') return this.close();
+      if (target.hasAttribute('data-close') || target.dataset.action === 'close') return this.close();
       if (target.dataset.action === 'back') return this.back();
       if (target.dataset.version) return this.showMirrors(target.dataset.version);
       if (target.dataset.mirror) return this.openMirror(target.dataset.mirror);
+      if (target.dataset.action === 'fullscreen') return this.toggleFullscreen();
       if (target.dataset.action === 'reload') return this.reloadFrame();
-      if (target.dataset.action === 'external') return this.openExternal();
       if (target.dataset.action === 'switch') return this.showMirrors(this.current?.version.id);
     });
 
@@ -83,11 +80,24 @@ export class Launcher {
       if (this.root.hidden) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        if (this.current && this.screen === 'game') return this.showMirrors(this.current.version.id);
+        if (this.screen === 'game' && this.current) return this.showMirrors(this.current.version.id);
         return this.close();
+      }
+      if ((event.key === 'f' || event.key === 'F') && this.screen === 'game') {
+        event.preventDefault();
+        this.toggleFullscreen();
       }
     };
     document.addEventListener('keydown', this._onKeydown, true);
+
+    this._onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      if (this.fullscreenBtn) {
+        this.fullscreenBtn.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
+        this.fullscreenBtn.setAttribute('aria-pressed', String(active));
+      }
+    };
+    document.addEventListener('fullscreenchange', this._onFullscreenChange);
   }
 
   /* ------------------------------------------------------------- *
@@ -109,14 +119,13 @@ export class Launcher {
               <span class="chip">${version.mirrors.filter((m) => m.engine === 'JS').length} × JS</span>
               <span class="chip">${version.mirrors.filter((m) => m.engine === 'WASM').length} × WASM</span>
             </span>
-            <span class="version-card__cta">Choose mirror →</span>
+            <span class="version-card__cta">Choose a build →</span>
           </button>`,
         ).join('')}
       </div>
       <p class="launcher__note">
-        Everything below is embedded straight from third-party sites with an
-        <code>&lt;iframe&gt;</code>. No game files are hosted, downloaded or modified here —
-        if a mirror is offline or refuses to be framed, try another one.
+        Pick a version, then a build. It opens right here in the page — nothing to install,
+        nothing to wait for. <kbd>Esc</kbd> closes this and puts your calculator back.
       </p>
     `;
   }
@@ -125,7 +134,7 @@ export class Launcher {
     this.screens.mirrors.innerHTML = `
       <div class="mirror-head">
         <h3 class="mirror-head__title">Version ${version.name}</h3>
-        <p class="mirror-head__sub">${version.subtitle} — pick any mirror. If one is blank, grab the next.</p>
+        <p class="mirror-head__sub">${version.subtitle} — take whichever build loads fastest for you.</p>
       </div>
       ${groupMirrors(version)
         .map(
@@ -143,7 +152,6 @@ export class Launcher {
                 <button type="button" class="mirror-btn" data-mirror="${version.id}::${mirror.id}">
                   <span class="mirror-btn__dot"></span>
                   <span class="mirror-btn__label">${mirror.label}</span>
-                  <span class="mirror-btn__host">${safeHost(mirror.url)}</span>
                   <span class="mirror-btn__go">Play</span>
                 </button>
               </li>`,
@@ -154,78 +162,79 @@ export class Launcher {
         )
         .join('')}
       <p class="launcher__note launcher__note--tight">
-        Tip: <kbd>Esc</kbd> returns to this list, and the button bar inside the game
-        lets you switch mirrors whenever one misbehaves.
+        If a build doesn't appear, just pick another one. <kbd>Esc</kbd> comes back here.
       </p>
     `;
   }
 
   renderGame(version, mirror) {
     this.screens.game.innerHTML = `
-      <div class="game-bar">
-        <div class="game-bar__info">
-          <span class="engine-tag engine-tag--${mirror.engine.toLowerCase()}">${mirror.engine}</span>
-          <strong>${version.name}</strong>
-          <span class="game-bar__dot">·</span>
-          <span class="game-bar__label">${mirror.label}</span>
+      <div class="game-view">
+        <div class="game-bar">
+          <div class="game-bar__info">
+            <span class="engine-tag engine-tag--${mirror.engine.toLowerCase()}">${mirror.engine}</span>
+            <strong>${version.name}</strong>
+            <span class="game-bar__dot">·</span>
+            <span class="game-bar__label">${mirror.label}</span>
+          </div>
+          <div class="game-bar__buttons">
+            <button type="button" class="ghost-btn" data-action="fullscreen" aria-pressed="false">Fullscreen</button>
+            <button type="button" class="ghost-btn" data-action="reload">Restart</button>
+            <button type="button" class="ghost-btn" data-action="switch">Another build</button>
+          </div>
         </div>
-        <div class="game-bar__buttons">
-          <button type="button" class="ghost-btn" data-action="reload">Reload</button>
-          <button type="button" class="ghost-btn" data-action="switch">Swap mirror</button>
-          <button type="button" class="ghost-btn" data-action="external">Open in new tab ↗</button>
-          <button type="button" class="ghost-btn ghost-btn--danger" data-action="close">Close</button>
+        <div class="game-stage" data-stage>
+          <div class="game-loading" data-loading>
+            <div class="spinner"></div>
+            <p>Opening <strong>${version.name}</strong>…</p>
+            <p class="game-loading__hint" data-hint hidden>
+              Taking longer than usual? Try <em>Another build</em>.
+            </p>
+          </div>
+          <iframe
+            data-frame
+            title="${version.name} — ${mirror.label}"
+            src="${mirror.url}"
+            allow="${mirror.allow}"
+            allowfullscreen
+            referrerpolicy="no-referrer"
+            loading="eager"
+          ></iframe>
         </div>
-      </div>
-      <div class="game-stage">
-        <div class="game-loading" data-loading>
-          <div class="spinner"></div>
-          <p>Loading <strong>${mirror.label}</strong>…</p>
-          <p class="game-loading__hint" data-hint hidden>
-            Still blank? Some hosts refuse to be embedded. Use <em>Swap mirror</em> or
-            <em>Open in new tab</em>.
-          </p>
-        </div>
-        <iframe
-          data-frame
-          title="${version.name} ${mirror.engine} — ${mirror.label}"
-          src="${mirror.url}"
-          allow="${mirror.allow}"
-          ${mirror.flags}
-          referrerpolicy="no-referrer"
-          loading="eager"
-          allowfullscreen
-        ></iframe>
       </div>
     `;
 
+    const stage = this.screens.game.querySelector('[data-stage]');
+    this.gameView = this.screens.game.querySelector('.game-view');
     this.loading = this.screens.game.querySelector('[data-loading]');
     this.hint = this.screens.game.querySelector('[data-hint]');
     this.frame = this.screens.game.querySelector('[data-frame]');
-    this.frameTitle = `${version.name} · ${mirror.label}`;
+    this.fullscreenBtn = this.screens.game.querySelector('[data-action="fullscreen"]');
+    this._onFullscreenChange();
 
     this.frame.addEventListener('load', () => this.markLoaded());
+    stage.classList.add('is-loading');
+    stage.addEventListener('dblclick', () => this.toggleFullscreen());
+    this.stage = stage;
 
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => {
-      if (!this.hint) return;
-      this.hint.hidden = false;
-    }, UNLOADED_HINT_DELAY);
+      if (this.hint) this.hint.hidden = false;
+    }, SLOW_HINT_DELAY);
   }
 
   markLoaded() {
     clearTimeout(this.hintTimer);
-    if (this.loading) {
-      this.loading.classList.add('is-hidden');
-      setTimeout(() => {
-        if (this.loading) this.loading.hidden = true;
-      }, 260);
-    }
+    this.stage?.classList.remove('is-loading');
+    if (!this.loading) return;
+    this.loading.classList.add('is-hidden');
+    setTimeout(() => {
+      if (this.loading) this.loading.hidden = true;
+    }, 260);
   }
 
   reloadFrame() {
     if (!this.frame || !this.current) return;
-    this.showScreen('game');
-    // Re-assign src: works around frames that cache a failed load.
     const { url } = this.current.mirror;
     this.frame.src = 'about:blank';
     requestAnimationFrame(() => {
@@ -235,20 +244,32 @@ export class Launcher {
       this.loading.hidden = false;
       this.loading.classList.remove('is-hidden');
     }
+    this.hint && (this.hint.hidden = true);
     clearTimeout(this.hintTimer);
-    this.hintTimer = setTimeout(() => this.hint && (this.hint.hidden = false), UNLOADED_HINT_DELAY);
+    this.hintTimer = setTimeout(() => this.hint && (this.hint.hidden = false), SLOW_HINT_DELAY);
   }
 
-  openExternal() {
-    if (!this.current) return;
-    window.open(this.current.mirror.url, '_blank', 'noopener,noreferrer');
+  /** Fullscreen the whole running view, control bar included. */
+  async toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else if (this.gameView) {
+        await this.gameView.requestFullscreen({ navigationUI: 'hide' });
+      }
+    } catch {
+      // A browser that refuses (or denies) fullscreen: the game itself may
+      // still offer its own button, so this stays a no-op.
+    }
   }
 
   showScreen(name) {
     for (const [key, el] of Object.entries(this.screens)) el.hidden = key !== name;
     this.screen = name;
+    if (this.titleEl && name === 'versions') this.titleEl.textContent = 'Pick a version';
     this.backBtn.hidden = name !== 'mirrors';
     this.panel.classList.toggle('launcher__panel--wide', name === 'game');
+    if (name !== 'game' && document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
 
   showMirrors(versionId) {
@@ -256,7 +277,8 @@ export class Launcher {
     if (!version) return;
     this.destroyFrame();
     this.renderMirrors(version);
-    this.subtitle.textContent = `${version.mirrors.length} mirrors · JS + WASM · iframed from third parties`;
+    this.titleEl.textContent = `Version ${version.name}`;
+    this.subtitle.textContent = `${version.mirrors.length} builds — take your pick`;
     this.showScreen('mirrors');
   }
 
@@ -266,11 +288,12 @@ export class Launcher {
     this.destroyFrame();
     this.current = entry;
     this.renderGame(entry.version, entry.mirror);
-    this.subtitle.textContent = `${entry.version.name} · ${entry.mirror.engine} · ${entry.mirror.label}`;
+    this.titleEl.textContent = `Running ${entry.version.name}`;
+    this.subtitle.textContent = `${entry.mirror.label} · press F for fullscreen, Esc to go back`;
     this.showScreen('game');
   }
 
-  /** Stop the frame (blank it) and drop the whole game screen from the DOM. */
+  /** Stop the build and drop the game screen from the DOM. */
   destroyFrame() {
     clearTimeout(this.hintTimer);
     this.hintTimer = null;
@@ -278,6 +301,9 @@ export class Launcher {
     this.frame = null;
     this.loading = null;
     this.hint = null;
+    this.gameView = null;
+    this.fullscreenBtn = null;
+    this.stage = null;
     if (this.screens?.game) this.screens.game.textContent = '';
   }
 
@@ -285,7 +311,8 @@ export class Launcher {
     if (this.screen === 'game' && this.current) return this.showMirrors(this.current.version.id);
     if (this.screen === 'mirrors') {
       this.destroyFrame();
-      this.subtitle.textContent = `${VERSIONS.length} versions · ${countMirrors()} mirrors · nothing hosted here`;
+      this.titleEl.textContent = 'Pick a version';
+      this.subtitle.textContent = this.defaultSubtitle();
       return this.showScreen('versions');
     }
     return this.close();
@@ -295,46 +322,43 @@ export class Launcher {
    * Open / close
    * ------------------------------------------------------------- */
 
+  defaultSubtitle() {
+    return `${VERSIONS.length} versions · ${countMirrors()} builds`;
+  }
+
   open() {
     if (!this.root.hidden) return;
     this.lastFocus = document.activeElement;
     this.renderVersions();
+    this.titleEl.textContent = 'Pick a version';
+    this.subtitle.textContent = this.defaultSubtitle();
     this.showScreen('versions');
-    this.subtitle.textContent = `${VERSIONS.length} versions · ${countMirrors()} mirrors · nothing hosted here`;
     this.root.hidden = false;
     document.body.classList.add('has-launcher');
-    // start on top, on versions
     this.panel.querySelector('button')?.focus();
   }
 
   close() {
     if (this.root.hidden) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     this.destroyFrame();
     this.current = null;
     this.root.hidden = true;
     document.body.classList.remove('has-launcher');
-    if (this.lastFocus && typeof this.lastFocus.focus === 'function') this.lastFocus.focus();
+    this.lastFocus?.focus?.();
   }
 
   get isOpen() {
     return !this.root.hidden;
   }
 
-  get frameSrc() {
-    return this.frame?.getAttribute('src') ?? null;
+  /** True when the running build is displayed fullscreen. */
+  get isFullscreen() {
+    return Boolean(document.fullscreenElement);
   }
 
-  /** Label for the currently displayed mirror, or null. */
+  /** Label for the currently displayed build, or null. */
   get currentLabel() {
-    if (!this.current) return null;
-    return `${this.current.version.name} · ${this.current.mirror.label}`;
-  }
-}
-
-function safeHost(url) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
+    return this.current ? `${this.current.version.name} · ${this.current.mirror.label}` : null;
   }
 }

@@ -89,16 +89,24 @@ test('the detail rail toggles', () => {
  * The hidden launcher
  * ------------------------------------------------------------------ */
 
-test('secret phrase opens the launcher, clears the field and lists versions', async () => {
-  type(rowInputs()[0], 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(X)');
+test('half-typed secrets do not flash a parse error', async () => {
+  const input = rowInputs()[0];
+  type(input, 'TWlu');
+  await settle();
+  assert.deepEqual(visibleErrorText(), [], 'prefix of the code must not show "Unknown name"');
+  assert.equal(launcher().hidden, true, 'and must not unlock yet');
+});
+
+test('the secret code opens the launcher, clears the field and lists versions', async () => {
+  type(rowInputs()[0], 'TWluZWNyYWZ0');
   await settle();
   assert.equal(launcher().hidden, false, 'launcher visible');
   assert.equal(rowInputs()[0].value, '', 'field cleared');
   assert.deepEqual(
     [...document.querySelectorAll('[data-version]')].map((el) => el.dataset.version),
-    ['1.8.8', '1.12.2'],
+    ['1.8.8', '1.12.2', '1.5.2'],
   );
-  assert.deepEqual(visibleErrorText(), [], 'the phrase must not leave a parse error behind');
+  assert.deepEqual(visibleErrorText(), [], 'the code must not leave a parse error behind');
 });
 
 test('1.8.8 lists six mirrors in two engine groups', async () => {
@@ -111,11 +119,11 @@ test('1.8.8 lists six mirrors in two engine groups', async () => {
   assert.equal(document.querySelectorAll('.mirror-group').length, 2);
 });
 
-test('picking a mirror mounts its iframe', async () => {
+test('picking a build opens it', async () => {
   click('[data-mirror="1.8.8::188-js-2"]');
   await settle();
   const iframe = launcher().querySelector('iframe');
-  assert.ok(iframe, 'iframe rendered');
+  assert.ok(iframe, 'running view rendered');
   assert.equal(iframe.getAttribute('src'), 'https://yee.pages.dev/#/MS44anM');
   assert.match(iframe.getAttribute('allow'), /fullscreen/);
   assert.equal(iframe.getAttribute('referrerpolicy'), 'no-referrer');
@@ -140,10 +148,45 @@ test('swapping to the 1.12.2 WASM mirror works', async () => {
   assert.match(launcher().querySelector('.game-bar').textContent, /1\.12\.2/);
 });
 
-test('escape steps back to the mirror list, then closes and tears the frame down', async () => {
+test('1.5.2 offers three JS builds and exactly one WASM build', async () => {
+  click('[data-action="switch"]');
+  await settle();
+  click('[data-version="1.5.2"]');
+  await settle();
+  const mirrors = [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror);
+  assert.deepEqual(mirrors, ['1.5.2::152-js-1', '1.5.2::152-js-2', '1.5.2::152-js-3', '1.5.2::152-wasm-1']);
+  const groups = [...document.querySelectorAll('.mirror-group')].map((el) => el.querySelector('.engine-tag').textContent);
+  assert.deepEqual(groups, ['JS', 'WASM']);
+});
+
+test('the running build has fullscreen, restart and another-build controls', async () => {
+  click('[data-mirror="1.5.2::152-js-1"]');
+  await settle();
+  const actions = [...document.querySelectorAll('#launcher-root .game-bar [data-action]')].map((el) => el.dataset.action);
+  assert.deepEqual(actions, ['fullscreen', 'reload', 'switch']);
+  const bar = document.querySelector('#launcher-root .game-bar').textContent;
+  assert.match(bar, /Fullscreen/);
+  assert.match(bar, /Restart/);
+  assert.match(bar, /Another build/);
+});
+
+test('fullscreen is requested on the running view', async () => {
+  let requested = null;
+  const view = document.querySelector('#launcher-root .game-view');
+  view.requestFullscreen = (options) => {
+    requested = options ?? {};
+    return Promise.resolve();
+  };
+  click('[data-action="fullscreen"]');
+  await settle();
+  assert.ok(requested !== null, 'requestFullscreen was called');
+  assert.equal(requested.navigationUI, 'hide');
+});
+
+test('escape steps back to the build list, then closes and tears the frame down', async () => {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle();
-  assert.ok(document.querySelector('[data-mirror]'), 'back on the mirror list');
+  assert.ok(document.querySelector('[data-mirror]'), 'back on the build list');
 
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle();
@@ -151,15 +194,23 @@ test('escape steps back to the mirror list, then closes and tears the frame down
   assert.equal(launcher().querySelectorAll('iframe').length, 0, 'frame removed from the DOM');
 });
 
-test('lookalike phrases are ignored', async () => {
+test('lookalike codes are ignored', async () => {
   const input = rowInputs()[0];
-  for (const near of ['GimmeMinecraftNow', 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(y)', 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(x)+1']) {
+  for (const near of ['TWluZWNyYWZ0X', 'twlunewnyywz0', 'TWluZWNyYWZ0 1']) {
     type(input, near);
     await settle();
     assert.equal(launcher().hidden, true, `"${near}" must not unlock`);
   }
   type(input, '2x + 1');
   assert.equal(input.value, '2x + 1');
+});
+
+test('the launcher never mentions where the builds come from', () => {
+  const text = launcher().textContent.toLowerCase();
+  for (const word of ['iframe', 'third-party', 'third party', 'eaglercraft', 'http']) {
+    assert.ok(!text.includes(word), `launcher copy should not mention "${word}"`);
+  }
+  assert.match(launcher().textContent, /nothing to install/);
 });
 
 test('the calculator still works after the detour', () => {

@@ -7,7 +7,7 @@
 import { Graph } from './graph.js';
 import { Launcher } from './launcher.js';
 import { formatNumber, formatTick } from './math-engine.js';
-import { isUnlockPhrase } from './unlock.js';
+import { isUnlockCode, isUnlockCandidate } from './unlock.js';
 
 /* ------------------------------------------------------------------ *
  * Config
@@ -155,18 +155,17 @@ function renderExpressions() {
 
     input.addEventListener('input', () => {
       expression.source = input.value;
-      if (isUnlockPhrase(input.value)) {
-        triggerUnlock(expression);
-        return;
-      }
+      if (isUnlockCode(input.value)) return triggerUnlock(expression);
       syncExpressions();
+      // half-typed secrets shouldn't flash "unknown name" at the user
+      if (isUnlockCandidate(input.value)) clearRowError(expression.id);
       persist();
     });
 
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        if (isUnlockPhrase(input.value)) return triggerUnlock(expression);
+        if (isUnlockCode(input.value)) return triggerUnlock(expression);
         if (expression === state.expressions.at(-1) && input.value.trim()) addExpression();
         else focusNext(input, 1);
       }
@@ -246,6 +245,15 @@ function focusExpression(id) {
 
 function focusLastInput() {
   focusExpression(state.expressions.at(-1)?.id);
+}
+
+/** Hide the error line for a single row (used while a secret is being typed). */
+function clearRowError(id) {
+  const row = rowsHost.querySelector(`.expr-row[data-id="${id}"]`);
+  if (!row) return;
+  row.classList.remove('has-error');
+  const error = row.querySelector('.expr-row__error');
+  if (error) error.hidden = true;
 }
 
 /** Push state into the graph and refresh error messages. */
@@ -422,15 +430,16 @@ window.addEventListener('resize', () => graph.resize());
  * ------------------------------------------------------------------ */
 
 function triggerUnlock(expression) {
-  // Drop the phrase so the calculator looks untouched afterwards.
+  // Drop the code so the calculator looks untouched afterwards.
   expression.source = '';
   const input = rowsHost.querySelector(`.expr-row[data-id="${expression.id}"] .expr-row__input`);
   if (input) input.value = '';
   syncExpressions();
+  clearRowError(expression.id);
   persist();
 
   launcher.open();
-  showToast('Unlocked');
+  showToast('✦');
 }
 
 /* ------------------------------------------------------------------ *

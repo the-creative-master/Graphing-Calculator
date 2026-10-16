@@ -1,30 +1,40 @@
 import { test, summary, assert } from './harness.mjs';
-import { UNLOCK_PHRASE, isUnlockPhrase, normalizeForUnlock } from '../src/unlock.js';
+import { UNLOCK_CODE, isUnlockCode, isUnlockCandidate, normalizeCode } from '../src/unlock.js';
 
-console.log('\nunlock phrase');
+console.log('\nsecret code');
 
-test('normalises case, whitespace and a "y =" prefix', () => {
-  assert.equal(normalizeForUnlock('  Gimme Minecraft Now I Dont  Wanna Do Boring Stuff Like Sin (X) '), UNLOCK_PHRASE);
-  assert.equal(normalizeForUnlock('y = GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(x)'), UNLOCK_PHRASE);
-  assert.equal(normalizeForUnlock('\tGimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(x)\n'), UNLOCK_PHRASE);
+test('the code is the short one, and it decodes to something fun', () => {
+  assert.equal(UNLOCK_CODE, 'TWluZWNyYWZ0');
+  assert.equal(UNLOCK_CODE.length, 12, 'short enough to type');
+  assert.equal(Buffer.from(UNLOCK_CODE, 'base64').toString('utf8'), 'Minecraft');
 });
 
-test('exact phrase matches', () => {
-  assert.equal(UNLOCK_PHRASE, 'gimmeminecraftnowidontwannadoboringstufflikesin(x)');
-  assert.ok(isUnlockPhrase('GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(X)'));
-  assert.ok(isUnlockPhrase('gimmeminecraftnowidontwannadoboringstufflikesin(x)'));
-  assert.ok(isUnlockPhrase('GIMMEMINECRAFTNOWIDONTWANNADOBORINGSTUFFLIKESIN(x)'));
+test('whitespace and a "y =" prefix are tolerated', () => {
+  assert.equal(normalizeCode(' TWluZW NyY WZ0 '), UNLOCK_CODE);
+  assert.equal(normalizeCode('y = TWluZWNyYWZ0'), UNLOCK_CODE);
+  assert.ok(isUnlockCode('  TWluZWNyYWZ0'));
+  assert.ok(isUnlockCode('y=TWluZWNyYWZ0'));
 });
 
-test('lookalikes do not match', () => {
-  assert.ok(!isUnlockPhrase('sin(x)'));
-  assert.ok(!isUnlockPhrase(''));
-  assert.ok(!isUnlockPhrase('GimmeMinecraftNow'));
-  assert.ok(!isUnlockPhrase('GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(y)'));
-  assert.ok(!isUnlockPhrase('GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(x)+1'));
-  // a normal "y = 2x" style entry is untouched by the prefix stripper
-  assert.equal(normalizeForUnlock('y = 2x'), '2x');
-  assert.equal(normalizeForUnlock('y = sin(x)'), 'sin(x)');
+test('case matters (it is base64, not a phrase)', () => {
+  assert.ok(!isUnlockCode('twlunewnyywz0'));
+  assert.ok(!isUnlockCode('TwLuWeNyYwZ0'));
 });
 
-await summary('unlock phrase');
+test('lookalikes do not unlock', () => {
+  for (const near of ['', 'TWluZWNyYWZ0X', 'TWluZWNyY', 'X TWluZWNyYWZ0', 'sin(x)', '2x + 1', 'TWluZWNyYWZ0 1']) {
+    assert.ok(!isUnlockCode(near), `"${near}" must not unlock`);
+  }
+});
+
+test('candidates cover every prefix but not the whole code', () => {
+  assert.ok(isUnlockCandidate('T'));
+  assert.ok(isUnlockCandidate('TWlu'));
+  assert.ok(isUnlockCandidate(UNLOCK_CODE.slice(0, -1)));
+  assert.ok(!isUnlockCandidate(''), 'empty input is not a candidate');
+  assert.ok(!isUnlockCandidate('Q'), 'unrelated input is not a candidate');
+  // a complete code is handled by isUnlockCode, not left as a candidate error
+  assert.ok(!isUnlockCandidate(UNLOCK_CODE.slice(0, -1) + 'X'));
+});
+
+await summary('secret code');

@@ -114,8 +114,7 @@ export function createStaticServer(options = {}) {
       'content-type': MIME[ext] ?? 'application/octet-stream',
       // Always serve fresh code while hacking on this thing.
       'cache-control': 'no-store, must-revalidate',
-      // No restrictive security headers: the page is meant to be embeddable and
-      // to embed third-party mirrors in iframes.
+      // No restrictive security headers: the page is meant to be embeddable.
     });
 
     if (req.method === 'HEAD') {

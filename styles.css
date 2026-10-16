@@ -1139,7 +1139,7 @@ kbd {
 .mirror-btn {
   width: 100%;
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto auto;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -1167,12 +1167,6 @@ kbd {
 .mirror-btn__label {
   font-weight: 600;
   font-size: 0.9rem;
-}
-
-.mirror-btn__host {
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--text-faint);
 }
 
 .mirror-btn__go {
@@ -1217,6 +1211,25 @@ kbd {
   flex-wrap: wrap;
 }
 
+.game-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.game-view:fullscreen,
+.game-view:-webkit-full-screen {
+  padding: 12px;
+  gap: 8px;
+  background: radial-gradient(900px 600px at 50% 0%, #0d1220, #05070d 75%);
+}
+
+.game-view:fullscreen .game-bar {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .game-stage {
   position: relative;
   flex: 1;
@@ -1225,6 +1238,12 @@ kbd {
   overflow: hidden;
   border: 1px solid var(--panel-border-strong);
   background: #05070d;
+}
+
+.game-stage.is-loading {
+  background:
+    radial-gradient(500px 300px at 50% 40%, rgba(91, 140, 255, 0.12), transparent 70%),
+    #05070d;
 }
 
 .game-stage iframe {

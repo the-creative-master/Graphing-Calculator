@@ -4,7 +4,7 @@
  * jsdom cannot execute ES modules, so the module sources are concatenated with
  * their import/export syntax stripped and evaluated as one classic script. That
  * still runs the genuine app.js / graph.js / launcher.js code — element lookups,
- * event wiring, overlay screens, iframes.
+ * event wiring, overlay screens, the running view.
  *
  * `realCanvas: true` swaps jsdom's missing canvas for an actual raster canvas
  * (@napi-rs/canvas) so tests can read back pixels and prove that typing really
