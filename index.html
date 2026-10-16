@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Graphing Calculator</title>
+    <meta
+      name="description"
+      content="A fast, modern graphing calculator. Plot functions, pan and zoom, trace curves, build tables of values."
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f1420'/%3E%3Cpath d='M6 46c8 0 10-28 22-28s14 28 30 28' fill='none' stroke='%235b8cff' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="30" height="30">
+              <path d="M4 34c6 0 7-22 16-22s10 22 24 22" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+            </svg>
+          </span>
+          <div class="brand__text">
+            <h1>Graphing Calculator</h1>
+            <p>Plots, traces, tables — and absolutely nothing else</p>
+          </div>
+        </div>
+
+        <div class="topbar__tools">
+          <div class="viewread" title="Visible range">
+            <span class="viewread__label">x</span><span id="view-x" class="viewread__value">−10 … 10</span>
+            <span class="viewread__sep"></span>
+            <span class="viewread__label">y</span><span id="view-y" class="viewread__value">−6.5 … 6.5</span>
+          </div>
+          <button type="button" id="angle-mode" class="pill-btn" title="Toggle radians / degrees">RAD</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="sidebar" aria-label="Calculator controls">
+          <section class="panel">
+            <div class="panel__head">
+              <h2>Expressions</h2>
+              <button type="button" id="add-expression" class="ghost-btn ghost-btn--sm">+ Add</button>
+            </div>
+            <div id="expression-list" class="expr-list"></div>
+            <p class="panel__hint">
+              Supports <code>sin cos tan asin ln log √ ^ ! π e</code>, implied multiplication
+              (<code>2x</code>, <code>3(x+1)</code>) and free parameters like <code>a·sin(b·x)</code>.
+            </p>
+          </section>
+
+          <section class="panel">
+            <div class="panel__head">
+              <h2>Table of values</h2>
+              <span id="table-step" class="panel__meta">step 1</span>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead id="table-head"></thead>
+                <tbody id="table-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel__head">
+              <h2>Markers</h2>
+              <button type="button" id="clear-markers" class="ghost-btn ghost-btn--sm">Clear</button>
+            </div>
+            <ul id="pinned-list" class="pinned"></ul>
+          </section>
+
+          <section class="panel panel--quiet">
+            <div class="panel__head">
+              <h2>Session</h2>
+            </div>
+            <div class="row-buttons">
+              <button type="button" id="clear-all" class="ghost-btn">Reset everything</button>
+            </div>
+            <p class="panel__hint">Expressions, angle mode and your viewport are stored locally in this browser.</p>
+          </section>
+        </aside>
+
+        <section class="stage" aria-label="Graph">
+          <div class="canvas-wrap">
+            <canvas id="graph-canvas" tabindex="0" aria-label="Graph canvas: drag to pan, scroll to zoom"></canvas>
+
+            <div class="stage__toolbar" role="toolbar" aria-label="View controls">
+              <button type="button" id="zoom-in" class="icon-btn" title="Zoom in (+)">＋</button>
+              <button type="button" id="zoom-out" class="icon-btn" title="Zoom out (−)">－</button>
+              <button type="button" id="reset-view" class="icon-btn" title="Reset view (0)">⟲</button>
+              <button type="button" id="square-zoom" class="icon-btn" title="Square zoom (equal axis scale)">◻</button>
+              <button type="button" id="center-origin" class="icon-btn" title="Centre the origin">⊕</button>
+            </div>
+
+            <div id="cursor-readout" class="readout" hidden>
+              <span id="cursor-coords" class="readout__coords">(0, 0)</span>
+              <span id="cursor-value" class="readout__value" hidden></span>
+            </div>
+          </div>
+
+          <footer class="statusbar">
+            <span>Drag to pan</span>
+            <span class="statusbar__dot"></span>
+            <span>Scroll to zoom</span>
+            <span class="statusbar__dot"></span>
+            <span>Click a curve to trace it</span>
+            <span class="statusbar__dot"></span>
+            <span>Double-click to reset</span>
+          </footer>
+        </section>
+      </main>
+    </div>
+
+    <div id="launcher-root"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
