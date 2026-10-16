@@ -190,9 +190,12 @@ export class Graph {
    * ---------------------------------------------------------------- */
 
   resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = this.width;
     const h = this.height;
+    // While the calculator is hidden (display:none) the element measures 0 —
+    // keep the last framebuffer instead of collapsing to 1×1.
+    if (w <= 1 || h <= 1) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.dpr = dpr;
     this.canvas.width = Math.max(1, Math.round(w * dpr));
     this.canvas.height = Math.max(1, Math.round(h * dpr));

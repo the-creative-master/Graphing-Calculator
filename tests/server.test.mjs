@@ -30,7 +30,9 @@ test('serves the app shell and assets', async () => {
     ['/styles.css', /text\/css/],
     ['/src/app.js', /javascript/],
     ['/src/math-engine.js', /javascript/],
-    ['/src/mirrors.js', /javascript/],
+    ['/src/catalog.js', /javascript/],
+    ['/src/router.js', /javascript/],
+    ['/src/play-page.js', /javascript/],
   ]) {
     const res = await raw(asset);
     assert.equal(res.status, 200, `${asset} status`);

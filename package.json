@@ -7,8 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node tests/math.test.mjs && node tests/mirrors.test.mjs && node tests/unlock.test.mjs && node tests/server.test.mjs && node tests/app.smoke.test.mjs && node tests/type-to-graph.test.mjs && node tests/render.test.mjs",
-    "test:unit": "node tests/math.test.mjs && node tests/mirrors.test.mjs && node tests/unlock.test.mjs"
+    "test": "node tests/math.test.mjs && node tests/catalog.test.mjs && node tests/router.test.mjs && node tests/unlock.test.mjs && node tests/server.test.mjs && node tests/app.smoke.test.mjs && node tests/deep-link.test.mjs && node tests/type-to-graph.test.mjs && node tests/render.test.mjs",
+    "test:unit": "node tests/math.test.mjs && node tests/catalog.test.mjs && node tests/router.test.mjs && node tests/unlock.test.mjs"
   },
   "engines": {
     "node": ">=18"

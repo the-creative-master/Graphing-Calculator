@@ -5,7 +5,8 @@
  * (entirely mundane) input handling.
  */
 import { Graph } from './graph.js';
-import { Launcher } from './launcher.js';
+import { PlayPage } from './play-page.js';
+import { Router } from './router.js';
 import { formatNumber, formatTick } from './math-engine.js';
 import { isUnlockCode, isUnlockCandidate } from './unlock.js';
 
@@ -58,7 +59,22 @@ const cursorValue = document.getElementById('cursor-value');
 const pinnedList = document.getElementById('pinned-list');
 const toast = document.getElementById('toast');
 
-const launcher = new Launcher(document.getElementById('launcher-root'));
+const appEl = document.getElementById('app');
+const router = new Router({
+  onChange: (route) => {
+    const playing = route.view !== 'calculator';
+    appEl.hidden = playing;
+    document.body.classList.toggle('view-play', playing);
+    playPage.render(route);
+    if (!playing) {
+      // the calculator was display:none while playing — re-measure on the way back
+      graph.resize();
+      updateTable();
+    }
+  },
+});
+const playPage = new PlayPage(document.getElementById('play-page'), router);
+playPage.onNotice = (message) => showToast(message);
 
 const graph = new Graph(canvas, {
   onCursor: handleCursor,
@@ -75,9 +91,13 @@ syncExpressions(); // hand the starter formulas to the graph immediately
 renderPinned();
 restoreSession(); // may replace the above with a saved session
 
+playPage.attachDocumentListeners();
+router.start();
+
 // Put the caret in the formula box so "type and it graphs" needs zero clicks.
-// Skipped on touch devices, where focusing would pop the keyboard open.
-if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+// Skipped on touch devices, where focusing would pop the keyboard open — and
+// skipped when the URL points straight at a build.
+if (router.route.view === 'calculator' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
   focusLastInput();
 }
 
@@ -368,7 +388,6 @@ function escapeHtml(text) {
 
 document.getElementById('add-expression').addEventListener('click', () => addExpression());
 
-const appEl = document.getElementById('app');
 const railToggle = document.getElementById('toggle-rail');
 const railVisibleByDefault = () => window.matchMedia?.('(min-width: 1181px)').matches;
 railToggle.setAttribute('aria-expanded', String(railVisibleByDefault()));
@@ -438,7 +457,7 @@ function triggerUnlock(expression) {
   clearRowError(expression.id);
   persist();
 
-  launcher.open();
+  router.navigate('/play');
   showToast('✦');
 }
 
@@ -511,7 +530,7 @@ graph.onViewport = (view) => {
 document.addEventListener('keydown', (event) => {
   // never steal keystrokes from an input the user is typing in
   const inField = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName ?? '');
-  if (inField || launcher.isOpen) return;
+  if (inField || router.route.view !== 'calculator') return;
   if (event.key === '+' || event.key === '=') {
     graph.zoomIn();
   } else if (event.key === '-' || event.key === '_') {

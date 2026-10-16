@@ -18,7 +18,15 @@ import { createCanvas } from '@napi-rs/canvas';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const MODULE_FILES = ['src/math-engine.js', 'src/mirrors.js', 'src/unlock.js', 'src/graph.js', 'src/launcher.js', 'src/app.js'];
+const MODULE_FILES = [
+  'src/math-engine.js',
+  'src/catalog.js',
+  'src/unlock.js',
+  'src/router.js',
+  'src/graph.js',
+  'src/play-page.js',
+  'src/app.js',
+];
 
 /** Strip ES module syntax so the file can live inside a classic script. */
 const stripModuleSyntax = (source) =>
@@ -55,14 +63,14 @@ function stubContext() {
   };
 }
 
-export async function bootApp({ width = 900, height = 600, realCanvas = false } = {}) {
+export async function bootApp({ width = 900, height = 600, realCanvas = false, url = 'http://localhost:3000/' } = {}) {
   const html = await readFile(path.join(ROOT, 'index.html'), 'utf8');
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (error) => errors.push(`${error.type ?? 'error'}: ${error.message}`));
   virtualConsole.on('error', (...args) => errors.push(args.join(' ')));
 
-  const dom = new JSDOM(html, { url: 'http://localhost:3000/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
+  const dom = new JSDOM(html, { url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole });
   const { window } = dom;
   const document = window.document;
 
@@ -127,6 +135,7 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false } 
   }
 
   /* --- helpers ------------------------------------------------------ */
+
   const frame = () => new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
 
   /**
