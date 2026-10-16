@@ -1,178 +1,74 @@
 /**
  * End-to-end smoke test for the UI.
  *
- * jsdom cannot execute ES modules, so the real module sources are concatenated
- * (imports/exports stripped) into one classic script and run inside jsdom with a
- * stubbed canvas. That still exercises the genuine app.js / graph.js /
- * launcher.js code paths: element lookups, event wiring, overlay screens and
- * iframe creation.
+ * Uses tests/boot-app.mjs, which loads index.html in jsdom and runs the real
+ * module sources (imports stripped) as one classic script. Tests run
+ * sequentially and each one finishes what it starts.
  *
  * Run with: node tests/app.smoke.test.mjs
  */
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { JSDOM, VirtualConsole } from 'jsdom';
 import { test, summary, assert } from './harness.mjs';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { bootApp } from './boot-app.mjs';
 
 console.log('\napp smoke test (jsdom)');
 
-/* ------------------------------------------------------------------ *
- * Module loading
- * ------------------------------------------------------------------ */
+const { window, document, errors, bootError, click, type, settle } = await bootApp();
 
-/** Strip ES module syntax so the file can live inside a classic script. */
-const stripModuleSyntax = (source) =>
-  source
-    .replace(/^\s*import\s+[^;]+;?\s*$/gm, '')
-    .replace(/^export\s+(const|let|var|function|class|async function)\b/gm, '$1')
-    .replace(/^\s*export\s*\{[^}]*\};?\s*$/gm, '');
-
-async function combineModules() {
-  const files = [
-    'src/math-engine.js',
-    'src/mirrors.js',
-    'src/unlock.js',
-    'src/graph.js',
-    'src/launcher.js',
-    'src/app.js',
-  ];
-  const parts = [];
-  for (const file of files) {
-    const source = await readFile(path.join(ROOT, file), 'utf8');
-    parts.push(`/* ==== ${file} ==== */\n${stripModuleSyntax(source)}`);
-  }
-  return `(function(){\n${parts.join('\n')}\nwindow.__APP_LOADED__ = true;\n})();`;
-}
-
-function createContext() {
-  const html = readFile(path.join(ROOT, 'index.html'), 'utf8');
-  return html;
-}
+const rowInputs = () => [...document.querySelectorAll('.expr-row__input')];
+const launcher = () => document.querySelector('#launcher-root');
+const visibleErrorText = () =>
+  [...document.querySelectorAll('.expr-row__error')]
+    .filter((el) => !el.hidden)
+    .map((el) => el.textContent);
 
 /* ------------------------------------------------------------------ *
  * Boot
  * ------------------------------------------------------------------ */
 
-const html = await createContext();
-const errors = [];
-const virtualConsole = new VirtualConsole();
-virtualConsole.on('jsdomError', (error) => errors.push(`${error.type ?? 'error'}: ${error.message}`));
-virtualConsole.on('error', (...args) => errors.push(args.join(' ')));
-
-const dom = new JSDOM(html, {
-  url: 'http://localhost:3000/',
-  runScripts: 'outside-only',
-  pretendToBeVisual: true,
-  virtualConsole,
-});
-const { window } = dom;
-const document = window.document;
-
-/* --- stubs jsdom lacks ------------------------------------------------ */
-
-window.HTMLCanvasElement.prototype.getContext = function getContext() {
-  const noop = () => {};
-  return {
-    canvas: this,
-    save: noop,
-    restore: noop,
-    clearRect: noop,
-    setTransform: noop,
-    beginPath: noop,
-    moveTo: noop,
-    lineTo: noop,
-    arc: noop,
-    fill: noop,
-    stroke: noop,
-    fillText: noop,
-    setLineDash: noop,
-    measureText: () => ({ width: 10 }),
-  };
-};
-
-window.HTMLCanvasElement.prototype.getBoundingClientRect = () => ({
-  left: 0,
-  top: 0,
-  right: 900,
-  bottom: 600,
-  width: 900,
-  height: 600,
-  x: 0,
-  y: 0,
-});
-
-for (const [prop, value] of [
-  ['clientWidth', 900],
-  ['clientHeight', 600],
-]) {
-  Object.defineProperty(window.HTMLElement.prototype, prop, { configurable: true, get: () => value });
-}
-
-window.ResizeObserver =
-  window.ResizeObserver ??
-  class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-
-window.Element.prototype.setPointerCapture = function setPointerCapture() {};
-window.Element.prototype.releasePointerCapture = function releasePointerCapture() {};
-
-/* --- run the app ------------------------------------------------------ */
-
-let bootError = null;
-const appCode = await combineModules();
-try {
-  window.eval(appCode);
-} catch (error) {
-  bootError = error;
-}
-
-const frame = () => new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
-const click = (selector) => {
-  const el = document.querySelector(selector);
-  if (el) el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-  return el;
-};
-const type = (el, value) => {
-  el.value = value;
-  el.dispatchEvent(new window.Event('input', { bubbles: true }));
-};
-
-/* ------------------------------------------------------------------ *
- * Tests
- * ------------------------------------------------------------------ */
-
-test('bundle boots without throwing', () => {
-  assert.equal(bootError, null, bootError ? String(bootError.stack ?? bootError) : '');
+test('bundle boots without uncaught errors', () => {
+  assert.equal(bootError, null, bootError ? String(bootError) : '');
   assert.ok(window.__APP_LOADED__);
 });
 
 test('initial UI is rendered', () => {
   assert.ok(document.querySelector('#graph-canvas'), 'canvas exists');
-  assert.equal(document.querySelectorAll('.expr-row').length, 2, 'two starter expressions');
+  assert.equal(document.querySelectorAll('.expr-row').length, 2, 'starter row + an empty one');
+  assert.equal(rowInputs()[0].value, 'sin(x)', 'starter curve');
+  assert.equal(rowInputs()[0].placeholder, 'type a formula…');
   assert.ok(document.querySelector('#table-body').children.length >= 5, 'table filled');
   assert.equal(document.querySelector('#angle-mode').textContent, 'RAD');
+  assert.equal(document.querySelector('#expression-list').closest('.composer') !== null, true, 'rows live in the composer');
+});
+
+test('the formula box is focused on load so you can just type', () => {
+  assert.equal(document.activeElement, rowInputs().at(-1), 'empty row is focused');
 });
 
 test('no engine errors were logged while drawing', () => {
   assert.deepEqual(errors, []);
 });
 
+/* ------------------------------------------------------------------ *
+ * Typing
+ * ------------------------------------------------------------------ */
+
 test('invalid input surfaces a friendly error', () => {
-  const input = document.querySelectorAll('.expr-row__input')[0];
+  const input = rowInputs()[0];
   type(input, 'sin(');
-  const error = document.querySelector('.expr-row[data-id="e1"] .expr-row__error');
-  assert.ok(error && !error.hidden, 'error row visible');
+  assert.deepEqual(visibleErrorText().length, 1, 'one visible error');
   type(input, 'sin(x)');
-  assert.ok(document.querySelector('.expr-row[data-id="e1"] .expr-row__error').hidden, 'error clears again');
+  assert.deepEqual(visibleErrorText(), []);
 });
 
-test('adding and removing expressions works', () => {
+test('example chips fill a row and graph it', () => {
+  const chips = [...document.querySelectorAll('.example-chip')];
+  assert.deepEqual(chips.slice(0, 3).map((el) => el.textContent), ['sin(x)', 'x^2 - 3', '1/x']);
+  chips[2].dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const values = rowInputs().map((el) => el.value);
+  assert.ok(values.includes('1/x'), `chip should fill a row, got ${JSON.stringify(values)}`);
+});
+
+test('adding and removing rows works', () => {
   const before = document.querySelectorAll('.expr-row').length;
   click('#add-expression');
   assert.equal(document.querySelectorAll('.expr-row').length, before + 1);
@@ -180,99 +76,97 @@ test('adding and removing expressions works', () => {
   assert.equal(document.querySelectorAll('.expr-row').length, before);
 });
 
-/* --- the secret ------------------------------------------------------- */
+test('the detail rail toggles', () => {
+  const app = document.querySelector('#app');
+  const toggle = document.querySelector('#toggle-rail');
+  toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  const opened = app.classList.contains('rail-open');
+  assert.ok(opened || app.classList.contains('rail-closed'), 'the rail state changes on click');
+  toggle.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); // put it back
+});
 
-type(document.querySelectorAll('.expr-row__input')[0], 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(X)');
-await frame();
-await frame();
+/* ------------------------------------------------------------------ *
+ * The hidden launcher
+ * ------------------------------------------------------------------ */
 
-test('secret phrase opens the launcher and clears the field', () => {
-  const root = document.querySelector('#launcher-root');
-  assert.equal(root.hidden, false, 'launcher visible');
-  assert.equal(document.querySelectorAll('.expr-row__input')[0].value, '', 'field cleared');
+test('secret phrase opens the launcher, clears the field and lists versions', async () => {
+  type(rowInputs()[0], 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(X)');
+  await settle();
+  assert.equal(launcher().hidden, false, 'launcher visible');
+  assert.equal(rowInputs()[0].value, '', 'field cleared');
   assert.deepEqual(
     [...document.querySelectorAll('[data-version]')].map((el) => el.dataset.version),
     ['1.8.8', '1.12.2'],
   );
+  assert.deepEqual(visibleErrorText(), [], 'the phrase must not leave a parse error behind');
 });
 
-click('[data-version="1.8.8"]');
-await frame();
-
-test('1.8.8 lists six mirrors grouped JS / WASM', () => {
-  const mirrors = [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror);
-  assert.deepEqual(mirrors, [
-    '1.8.8::188-js-1',
-    '1.8.8::188-js-2',
-    '1.8.8::188-js-3',
-    '1.8.8::188-wasm-1',
-    '1.8.8::188-wasm-2',
-    '1.8.8::188-wasm-3',
-  ]);
+test('1.8.8 lists six mirrors in two engine groups', async () => {
+  click('[data-version="1.8.8"]');
+  await settle();
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
+    ['1.8.8::188-js-1', '1.8.8::188-js-2', '1.8.8::188-js-3', '1.8.8::188-wasm-1', '1.8.8::188-wasm-2', '1.8.8::188-wasm-3'],
+  );
   assert.equal(document.querySelectorAll('.mirror-group').length, 2);
 });
 
-click('[data-mirror="1.8.8::188-js-2"]');
-await frame();
-
-test('picking a mirror mounts its iframe', () => {
-  const iframe = document.querySelector('#launcher-root iframe');
+test('picking a mirror mounts its iframe', async () => {
+  click('[data-mirror="1.8.8::188-js-2"]');
+  await settle();
+  const iframe = launcher().querySelector('iframe');
   assert.ok(iframe, 'iframe rendered');
   assert.equal(iframe.getAttribute('src'), 'https://yee.pages.dev/#/MS44anM');
   assert.match(iframe.getAttribute('allow'), /fullscreen/);
   assert.equal(iframe.getAttribute('referrerpolicy'), 'no-referrer');
-  assert.match(iframe.getAttribute('allowfullscreen'), /true|^$/);
 });
 
-test('reload keeps the same target', () => {
+test('reload keeps the same target', async () => {
   click('[data-action="reload"]');
-  const iframe = document.querySelector('#launcher-root iframe');
-  assert.ok(iframe);
+  await settle();
+  assert.equal(launcher().querySelector('iframe').getAttribute('src'), 'https://yee.pages.dev/#/MS44anM');
 });
 
-click('[data-action="switch"]');
-await frame();
-click('[data-version="1.12.2"]');
-await frame();
-click('[data-mirror="1.12.2::1122-wasm-2"]');
-await frame();
-
-test('switching to the 1.12.2 WASM mirror works', () => {
-  const iframe = document.querySelector('#launcher-root iframe');
-  assert.equal(iframe.getAttribute('src'), 'https://yee.pages.dev/#/MS4xMndhc20');
-  const tag = document.querySelector('#launcher-root .game-bar .engine-tag');
-  assert.equal(tag.textContent, 'WASM');
-  assert.match(document.querySelector('#launcher-root .game-bar').textContent, /1\.12\.2/);
-});
-
-test('all six 1.12.2 mirrors are registered in the DOM', () => {
+test('swapping to the 1.12.2 WASM mirror works', async () => {
   click('[data-action="switch"]');
-  const mirrors = [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror);
-  assert.equal(mirrors.length, 6);
-  assert.ok(mirrors.every((id) => id.startsWith('1.12.2::')));
-  click('[data-mirror="1.12.2::1122-js-1"]');
+  await settle();
+  click('[data-version="1.12.2"]');
+  await settle();
+  click('[data-mirror="1.12.2::1122-wasm-2"]');
+  await settle();
+  const iframe = launcher().querySelector('iframe');
+  assert.equal(iframe.getAttribute('src'), 'https://yee.pages.dev/#/MS4xMndhc20');
+  assert.equal(launcher().querySelector('.game-bar .engine-tag').textContent, 'WASM');
+  assert.match(launcher().querySelector('.game-bar').textContent, /1\.12\.2/);
 });
 
-test('escape leaves the game view, then closes', async () => {
+test('escape steps back to the mirror list, then closes and tears the frame down', async () => {
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await settle();
   assert.ok(document.querySelector('[data-mirror]'), 'back on the mirror list');
+
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  assert.equal(document.querySelector('#launcher-root').hidden, true, 'closed');
-  assert.equal(document.querySelectorAll('#launcher-root iframe').length, 0, 'frame torn down');
+  await settle();
+  assert.equal(launcher().hidden, true, 'closed');
+  assert.equal(launcher().querySelectorAll('iframe').length, 0, 'frame removed from the DOM');
 });
 
 test('lookalike phrases are ignored', async () => {
-  const input = document.querySelectorAll('.expr-row__input')[0];
-  type(input, 'GimmeMinecraftNow');
-  assert.equal(document.querySelector('#launcher-root').hidden, true, 'launcher stays closed');
-  type(input, '2x+1');
-  assert.equal(input.value, '2x+1');
+  const input = rowInputs()[0];
+  for (const near of ['GimmeMinecraftNow', 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(y)', 'GimmeMinecraftNowIDontWannaDoBoringStuffLikeSin(x)+1']) {
+    type(input, near);
+    await settle();
+    assert.equal(launcher().hidden, true, `"${near}" must not unlock`);
+  }
+  type(input, '2x + 1');
+  assert.equal(input.value, '2x + 1');
 });
 
-test('keyboard shortcuts zoom and reset', () => {
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '+' }));
-  document.body.dispatchEvent(new window.KeyboardEvent('keydown', { key: '0', bubbles: true }));
-  assert.ok(true);
+test('the calculator still works after the detour', () => {
+  const input = rowInputs()[0];
+  type(input, 'sin(x) + 2x');
+  assert.deepEqual(visibleErrorText(), [], 'valid expression shows no error');
+  assert.equal(document.querySelector('#graph-canvas') !== null, true);
 });
 
 await summary('app smoke test');

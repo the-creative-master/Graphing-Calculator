@@ -31,10 +31,13 @@ const STORAGE_KEY = 'graphing-calculator:v1';
  * ------------------------------------------------------------------ */
 
 let nextId = 1;
+const EXAMPLES = ['sin(x)', 'x^2 - 3', '1/x', 'tan(x)', '2 sin(x) / x', 'sqrt(x)', 'e^x', 'x^3 - 3x'];
+
 const state = {
+  // one clean curve on first visit; the empty second row invites typing
   expressions: [
     { id: 'e1', color: COLORS[0], visible: true, source: 'sin(x)' },
-    { id: 'e2', color: COLORS[1], visible: true, source: 'x^2 / 4 - 2' },
+    { id: 'e2', color: COLORS[1], visible: true, source: '' },
   ],
   radians: true,
   pinned: [],
@@ -45,7 +48,8 @@ const state = {
  * ------------------------------------------------------------------ */
 
 const canvas = document.getElementById('graph-canvas');
-const sidebar = document.getElementById('expression-list');
+const rowsHost = document.getElementById('expression-list');
+const examplesHost = document.getElementById('examples');
 const tableBody = document.getElementById('table-body');
 const tableHead = document.getElementById('table-head');
 const cursorReadout = document.getElementById('cursor-readout');
@@ -65,22 +69,54 @@ const graph = new Graph(canvas, {
   },
 });
 
-graph.setExpressions(state.expressions);
+renderExamples();
 renderExpressions();
-updateTable();
-restoreSession();
+syncExpressions(); // hand the starter formulas to the graph immediately
+renderPinned();
+restoreSession(); // may replace the above with a saved session
+
+// Put the caret in the formula box so "type and it graphs" needs zero clicks.
+// Skipped on touch devices, where focusing would pop the keyboard open.
+if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+  focusLastInput();
+}
 
 /* ------------------------------------------------------------------ *
  * Expression list
  * ------------------------------------------------------------------ */
 
+function renderExamples() {
+  examplesHost.innerHTML = '<span class="examples__label">Examples:</span>';
+  for (const example of EXAMPLES) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'example-chip';
+    chip.textContent = example;
+    chip.title = `Graph ${example}`;
+    chip.addEventListener('click', () => {
+      // fill the first empty row, otherwise add a fresh one
+      const target = state.expressions.find((item) => !item.source.trim()) ?? addExpression();
+      target.source = example;
+      renderExpressions();
+      syncExpressions();
+      persist();
+      focusExpression(target.id);
+    });
+    examplesHost.append(chip);
+  }
+}
+
 function renderExpressions() {
-  sidebar.textContent = '';
+  rowsHost.textContent = '';
 
   for (const expression of state.expressions) {
     const row = document.createElement('div');
     row.className = 'expr-row';
     row.dataset.id = expression.id;
+
+    const prefix = document.createElement('span');
+    prefix.className = 'expr-row__prefix';
+    prefix.textContent = 'ƒ(x) =';
 
     const swatch = document.createElement('input');
     swatch.type = 'color';
@@ -96,7 +132,7 @@ function renderExpressions() {
     input.autocomplete = 'off';
     input.autocapitalize = 'off';
     input.value = expression.source;
-    input.placeholder = expression.id === state.expressions[0]?.id ? 'Try sin(x), x^2/4 - 2, a·sin(b·x)' : 'Add an expression';
+    input.placeholder = 'type a formula…';
     input.setAttribute('aria-label', 'Expression');
 
     const toggle = document.createElement('button');
@@ -167,9 +203,9 @@ function renderExpressions() {
       persist();
     });
 
-    row.append(swatch, input, toggle, remove, error);
+    row.append(swatch, prefix, input, toggle, remove, error);
     if (!expression.visible) row.classList.add('is-muted');
-    sidebar.append(row);
+    rowsHost.append(row);
   }
 }
 
@@ -193,26 +229,30 @@ function addExpression() {
 }
 
 function focusNext(input, delta) {
-  const inputs = [...sidebar.querySelectorAll('.expr-row__input')];
+  const inputs = [...rowsHost.querySelectorAll('.expr-row__input')];
   const index = inputs.indexOf(input);
   const target = inputs[index + delta];
   if (target) target.focus();
 }
 
+/** Focus (and select) the formula box for one expression row. */
+function focusExpression(id) {
+  const input = rowsHost.querySelector(`.expr-row[data-id="${id}"] .expr-row__input`);
+  if (!input) return;
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange?.(end, end);
+}
+
 function focusLastInput() {
-  const inputs = [...sidebar.querySelectorAll('.expr-row__input')];
-  const last = inputs.at(-1);
-  if (last) {
-    last.focus();
-    last.select();
-  }
+  focusExpression(state.expressions.at(-1)?.id);
 }
 
 /** Push state into the graph and refresh error messages. */
 function syncExpressions() {
   const compiled = graph.setExpressions(state.expressions);
   for (const item of compiled) {
-    const row = sidebar.querySelector(`.expr-row[data-id="${item.id}"]`);
+    const row = rowsHost.querySelector(`.expr-row[data-id="${item.id}"]`);
     if (!row) continue;
     const error = row.querySelector('.expr-row__error');
     error.hidden = !item.error;
@@ -319,6 +359,20 @@ function escapeHtml(text) {
  * ------------------------------------------------------------------ */
 
 document.getElementById('add-expression').addEventListener('click', () => addExpression());
+
+const appEl = document.getElementById('app');
+const railToggle = document.getElementById('toggle-rail');
+const railVisibleByDefault = () => window.matchMedia?.('(min-width: 1181px)').matches;
+railToggle.setAttribute('aria-expanded', String(railVisibleByDefault()));
+railToggle.addEventListener('click', () => {
+  const open = appEl.classList.contains('rail-open') || (railVisibleByDefault() && !appEl.classList.contains('rail-closed'));
+  appEl.classList.toggle('rail-open', !open);
+  appEl.classList.toggle('rail-closed', open);
+  railToggle.setAttribute('aria-expanded', String(!open));
+  railToggle.textContent = open ? 'Panel' : 'Hide panel';
+  graph.resize();
+  updateTable();
+});
 document.getElementById('zoom-in').addEventListener('click', () => graph.zoomIn());
 document.getElementById('zoom-out').addEventListener('click', () => graph.zoomOut());
 document.getElementById('reset-view').addEventListener('click', () => graph.resetView());
@@ -340,7 +394,8 @@ document.getElementById('clear-markers').addEventListener('click', () => {
   renderPinned();
 });
 document.getElementById('clear-all').addEventListener('click', () => {
-  state.expressions = [newExpression()];
+  state.expressions.length = 0;
+  state.expressions.push(newExpression());
   state.pinned = [];
   renderPinned();
   renderExpressions();
@@ -369,7 +424,7 @@ window.addEventListener('resize', () => graph.resize());
 function triggerUnlock(expression) {
   // Drop the phrase so the calculator looks untouched afterwards.
   expression.source = '';
-  const input = sidebar.querySelector(`.expr-row[data-id="${expression.id}"] .expr-row__input`);
+  const input = rowsHost.querySelector(`.expr-row[data-id="${expression.id}"] .expr-row__input`);
   if (input) input.value = '';
   syncExpressions();
   persist();

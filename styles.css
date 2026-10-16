@@ -107,9 +107,9 @@ kbd {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 14px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--panel-border);
-  background: rgba(8, 11, 19, 0.7);
+  background: rgba(8, 11, 19, 0.72);
   backdrop-filter: blur(14px);
   flex-wrap: wrap;
 }
@@ -124,9 +124,9 @@ kbd {
 .brand__mark {
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   color: var(--accent);
   background: linear-gradient(150deg, rgba(91, 140, 255, 0.25), rgba(47, 214, 232, 0.12));
   border: 1px solid rgba(91, 140, 255, 0.35);
@@ -134,12 +134,12 @@ kbd {
 }
 
 .brand__text h1 {
-  font-size: 1.05rem;
+  font-size: 1rem;
 }
 
 .brand__text p {
   margin: 2px 0 0;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--text-faint);
 }
 
@@ -158,7 +158,7 @@ kbd {
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.03);
   font-family: var(--mono);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   color: var(--text-dim);
 }
 
@@ -179,7 +179,7 @@ kbd {
   color: #cfe0ff;
   border-radius: 999px;
   padding: 7px 14px;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -197,15 +197,16 @@ kbd {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 356px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 16px;
   flex: 1;
   min-height: 0;
 }
 
-.sidebar {
-  display: flex;
+/* the right-hand detail rail is opt-in, and off by default on narrow screens */
+.rail {
+  display: none;
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
@@ -213,11 +214,37 @@ kbd {
   scrollbar-width: thin;
 }
 
-.sidebar::-webkit-scrollbar {
+@media (min-width: 1181px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .rail {
+    display: flex;
+  }
+}
+
+.app.rail-open .workspace {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.app.rail-open .rail {
+  display: flex;
+}
+
+.app.rail-closed .workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app.rail-closed .rail {
+  display: none;
+}
+
+.rail::-webkit-scrollbar {
   width: 9px;
 }
 
-.sidebar::-webkit-scrollbar-thumb {
+.rail::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
 }
@@ -244,7 +271,7 @@ kbd {
 }
 
 .panel__head h2 {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-dim);
@@ -258,7 +285,7 @@ kbd {
 
 .panel__hint {
   margin: 10px 0 0;
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   line-height: 1.5;
   color: var(--text-faint);
 }
@@ -267,6 +294,215 @@ kbd {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------
+   Composer — the big "type here" band above the graph
+   -------------------------------------------------------------------------- */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--panel-border-strong);
+  background: linear-gradient(180deg, rgba(23, 31, 50, 0.92), rgba(15, 20, 34, 0.85));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+  flex: 0 0 auto;
+}
+
+.composer__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.examples {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.examples__label {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+.example-chip {
+  border: 1px solid var(--panel-border-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  padding: 4px 9px;
+  border-radius: 999px;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.example-chip:hover {
+  background: rgba(91, 140, 255, 0.16);
+  border-color: rgba(91, 140, 255, 0.45);
+  color: #dce7ff;
+}
+
+/*
+ * An expression row. Grid: [prefix] [input] [eye] [remove]
+ * `:has()` keeps the prefix hidden until there is text, so an empty row is
+ * just a clean input waiting for the user to type.
+ */
+
+.expr-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 32px 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(6, 9, 16, 0.55);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.expr-row:focus-within {
+  border-color: rgba(91, 140, 255, 0.55);
+  background: rgba(12, 18, 32, 0.9);
+  box-shadow: 0 0 0 3px rgba(91, 140, 255, 0.12);
+}
+
+.expr-row.has-error {
+  border-color: rgba(255, 107, 139, 0.55);
+}
+
+.expr-row.is-muted .expr-row__input {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+/* colour swatch: the dot doubles as the colour picker */
+.expr-row__color {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  grid-row: 1;
+}
+
+.expr-row__color::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.expr-row__color::-webkit-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+}
+
+.expr-row__color::-moz-color-swatch {
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+}
+
+.expr-row__prefix {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.expr-row__input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 1rem;
+  padding: 7px 2px;
+  outline: none;
+  min-width: 0;
+}
+
+.expr-row__input::placeholder {
+  color: var(--text-faint);
+  font-family: var(--font);
+  font-size: 0.92rem;
+}
+
+.expr-row__toggle,
+.expr-row__remove {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.82rem;
+}
+
+.expr-row__toggle:hover,
+.expr-row__remove:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+
+.expr-row__remove:hover {
+  color: var(--danger);
+}
+
+.expr-row__error {
+  grid-column: 2 / -1;
+  font-size: 0.74rem;
+  color: #ffb3c4;
+  padding: 0 2px 4px;
+  font-family: var(--mono);
+}
+
+/* cheatsheet list in the rail */
+.cheatsheet {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cheatsheet li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  padding-bottom: 6px;
+}
+
+.cheatsheet li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cheatsheet code {
+  color: #cfd7ec;
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --------------------------------------------------------------------------
@@ -1048,23 +1284,36 @@ kbd {
    -------------------------------------------------------------------------- */
 
 @media (max-width: 980px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
+  .canvas-wrap {
+    min-height: 58vh;
   }
 
-  .sidebar {
+  .rail {
     order: 2;
     overflow: visible;
   }
 
-  .canvas-wrap {
-    min-height: 62vh;
+  .app.rail-open .workspace {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 620px) {
   .topbar {
-    padding: 12px 14px;
+    padding: 11px 14px;
+    gap: 10px;
+  }
+
+  .brand__text p {
+    display: none;
+  }
+
+  .composer {
+    padding: 10px;
+  }
+
+  .expr-row__input {
+    font-size: 0.95rem;
   }
 
   .workspace {

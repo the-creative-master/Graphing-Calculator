@@ -225,6 +225,7 @@ export class Graph {
     ctx.lineWidth = 1;
     this.drawGrid(ctx, w, h, xStep, yStep, theme);
     this.drawAxes(ctx, w, h, xStep, yStep, theme);
+    this._lastSteps = { xStep, yStep };
 
     for (const expr of this.expressions) {
       if (expr.visible && expr.fn) this.drawCurve(ctx, w, h, expr);
@@ -271,23 +272,29 @@ export class Graph {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
+    const labelY = Math.min(Math.max(axisY + 6, 4), h - 15);
     const x0 = Math.floor(this.view.xMin / xStep) * xStep;
     for (let x = x0; x <= this.view.xMax + xStep * 0.001; x += xStep) {
       if (Math.abs(x) < xStep * 1e-6) continue;
       const sx = this.toScreen(x, 0).x;
-      ctx.fillText(formatTick(x, xStep), sx, Math.min(axisY + 6, h - 16));
+      if (sx < 8 || sx > w - 8) continue; // keep labels off the very edge
+      ctx.fillText(formatTick(x, xStep), Math.min(Math.max(sx, 16), w - 16), labelY);
     }
+
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     const y0 = Math.floor(this.view.yMin / yStep) * yStep;
     for (let y = y0; y <= this.view.yMax + yStep * 0.001; y += yStep) {
       if (Math.abs(y) < yStep * 1e-6) continue;
       const sy = this.toScreen(0, y).y;
-      ctx.fillText(formatTick(y, yStep), Math.max(axisX - 7, 26), sy);
+      if (sy < 10 || sy > h - 10) continue;
+      // sit just left of the y-axis, but never off the canvas
+      ctx.fillText(formatTick(y, yStep), Math.min(Math.max(axisX - 7, 30), w - 6), sy);
     }
+
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    ctx.fillText('0', axisX - 6, axisY + 5);
+    if (axisX > 18 && axisY < h - 16) ctx.fillText('0', axisX - 6, axisY + 5);
     ctx.restore();
   }
 
@@ -313,6 +320,9 @@ export class Graph {
 
       const inRange = Number.isFinite(y) && Math.abs(y) <= yLimit;
       if (!inRange) {
+        // A hole in the domain (1/x at 0, sqrt of a negative, ...) ends the
+        // current stroke — but the part already traced must still be drawn.
+        if (current && current.length > 1) segments.push(current);
         current = null;
         prev = null;
         continue;
