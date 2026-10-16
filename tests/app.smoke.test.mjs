@@ -87,10 +87,10 @@ test('the shelf lists versions and clients', () => {
   assert.deepEqual(sections, ['Versions', 'Clients']);
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
   );
   const text = play().textContent;
-  for (const name of ['Astra Client', 'Resent Client', '1.5.2']) {
+  for (const name of ['Astra Client', 'Resent Client', '1.5.2', 'EaglercraftPhi 1.9.4', 'EaglercraftZ 1.11.2']) {
     assert.ok(text.includes(name), `${name} should be listed`);
   }
   assert.match(text, /nothing to install/);
@@ -116,7 +116,7 @@ test('the browser back button works (hash history)', async () => {
   assert.equal(hash(), '#/play', 'back to the shelf');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
   );
   click('[data-entry="1.5.2"]');
   await settle();
@@ -135,7 +135,7 @@ test('opening a build puts it on screen with its own URL', async () => {
 
 test('the running build has fullscreen, restart and another-build controls', () => {
   const actions = [...play().querySelectorAll('.game-hud [data-action]')].map((el) => el.dataset.action);
-  assert.deepEqual(actions, ['fullscreen', 'restart', 'another']);
+  assert.deepEqual(actions, ['keyboard', 'fullscreen', 'restart', 'another']);
   const hud = play().querySelector('.game-hud').textContent;
   assert.match(hud, /Fullscreen/);
   assert.match(hud, /Restart/);
@@ -146,7 +146,7 @@ test('the running build has fullscreen, restart and another-build controls', () 
  * Keyboard handoff (was stealing keys from the build)
  * ------------------------------------------------------------------ */
 
-test('the build is focused as soon as it loads', async () => {
+test('the build gets the keyboard as soon as it loads', async () => {
   let focuses = 0;
   const original = window.HTMLIFrameElement.prototype.focus;
   window.HTMLIFrameElement.prototype.focus = function focus() {
@@ -156,111 +156,123 @@ test('the build is focused as soon as it loads', async () => {
   play().querySelector('iframe').dispatchEvent(new window.Event('load'));
   await settle();
   window.HTMLIFrameElement.prototype.focus = original;
+
   assert.ok(focuses > 0, 'the frame was focused so it receives keystrokes');
-  assert.match(play().querySelector('[data-keys]').textContent, /keys → build/);
+  assert.match(play().querySelector('[data-keys]').textContent, /keyboard: game/);
+  assert.ok(play().querySelector('[data-keys]').classList.contains('is-locked'));
 });
 
-test('no single-letter shortcut is stolen from the build', async () => {
-  let fullscreenRequests = 0;
-  play().requestFullscreen = () => {
-    fullscreenRequests++;
-    return Promise.resolve();
+test('K locks the keyboard to the game and back again', async () => {
+  const keys = play().querySelector('[data-keys]');
+  const press = (key) => document.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+
+  click('[data-stage]'); // start from the game holding the keys
+  await settle();
+  assert.match(keys.textContent, /keyboard: game/, 'the game starts with the keys');
+
+  press('k');
+  await settle();
+  assert.match(keys.textContent, /keyboard: page/, 'K releases the keyboard');
+  assert.ok(!keys.classList.contains('is-locked'));
+
+  // (In a real browser the page only hears this second press while it holds the
+  // keys — which is exactly the state we are in. Once the game has them, its
+  // own Esc/K handling takes over.)
+  press('K');
+  await settle();
+  assert.match(keys.textContent, /keyboard: game/, 'K locks it back to the game');
+  assert.ok(keys.classList.contains('is-locked'));
+});
+
+test('clicking the game locks the keyboard to it, clicking the page releases it', async () => {
+  const keys = play().querySelector('[data-keys]');
+  click('[data-stage]');
+  await settle();
+  assert.match(keys.textContent, /keyboard: game/, 'clicking the game gives it the keys');
+
+  click('[data-keys]'); // the control bar chip is the click-to-release affordance
+  await settle();
+  assert.match(keys.textContent, /keyboard: page/, 'the chip hands them back');
+
+  click('[data-action="restart"]');
+  await settle();
+  assert.match(keys.textContent, /keyboard: page/, 'a restart no longer steals them back mid-click');
+});
+
+test('gameplay keys are swallowed on the page instead of scrolling it', async () => {
+  const keys = play().querySelector('[data-keys]');
+  if (!/keyboard: page/.test(keys.textContent)) click('[data-keys]');
+  await settle();
+  assert.match(keys.textContent, /keyboard: page/, 'page has the keys');
+
+  let defaultPrevented = 0;
+  const original = window.KeyboardEvent.prototype.preventDefault;
+  window.KeyboardEvent.prototype.preventDefault = function preventDefault() {
+    defaultPrevented++;
+    return original?.call?.(this);
   };
-  for (const key of ['f', 'F', 'w', 'a', 's', 'd', 'e', 'q', 't']) {
-    document.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
+  for (const key of ['w', 'a', 's', 'd', ' ', 'ArrowUp']) {
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
   }
-  await settle();
-  assert.equal(fullscreenRequests, 0, '"f" must not toggle fullscreen any more');
-  assert.equal(play().hidden, false, 'and nothing navigated away');
-});
+  window.KeyboardEvent.prototype.preventDefault = original;
 
-test('typing on the page nudges you to click the game', async () => {
-  // hand focus to the build first: that is the normal state
-  click('[data-stage]');
-  await settle();
+  assert.ok(defaultPrevented >= 6, `gameplay keys should be swallowed (${defaultPrevented})`);
+  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'and must not navigate');
   const toast = play().querySelector('[data-focus-toast]');
-  const chip = play().querySelector('[data-keys]');
-  assert.ok(toast, 'hint element exists');
-  assert.equal(toast.hidden, true, 'nothing to say while the build has the keys');
-  assert.ok(!chip.classList.contains('is-warn'), 'chip shows the keys reach the build');
-
-  // now the page gets a keystroke, which means the build does NOT have focus
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'w', bubbles: true }));
-  assert.equal(toast.hidden, false, 'explains where the keystrokes are going');
-  assert.match(toast.textContent, /click the game/i);
-  assert.ok(chip.classList.contains('is-warn'), 'keyboard chip warns too');
+  assert.equal(toast.hidden, false, 'the player is told where their keys should go');
+  assert.match(toast.textContent, /press K/i);
 
   click('[data-stage]');
   await settle();
-  assert.equal(toast.hidden, true, 'clicking the game hands the keys over');
-  assert.ok(!chip.classList.contains('is-warn'));
+  assert.equal(toast.hidden, true, 'and it goes away once the game has the keys');
 });
 
 /* ------------------------------------------------------------------ *
- * Fullscreen, including the fallback
+ * Fullscreen: mocked, not requested
  * ------------------------------------------------------------------ */
 
-test('fullscreen uses the API when it is available', async () => {
-  let requested = null;
-  play().requestFullscreen = (options) => {
-    requested = options ?? {};
-    // pretend the browser accepted and entered fullscreen
-    Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => play() });
-    document.dispatchEvent(new window.Event('fullscreenchange'));
+test('Fullscreen fills the window and requests nothing from the browser', async () => {
+  let asked = 0;
+  play().requestFullscreen = () => {
+    asked++;
     return Promise.resolve();
   };
+  assert.equal(document.body.classList.contains('is-immersive'), false, 'starts windowed');
+
   click('[data-action="fullscreen"]');
   await settle();
-  assert.ok(requested !== null, 'requestFullscreen was called');
-  assert.equal(requested.navigationUI, 'hide');
+  assert.equal(document.body.classList.contains('is-immersive'), true, 'the view fills the window');
+  assert.ok(play().classList.contains('is-immersive'));
   assert.equal(play().querySelector('[data-action="fullscreen"]').textContent, 'Exit fullscreen');
-  assert.ok(play().querySelector('[data-action="fullscreen"]').getAttribute('aria-pressed') === 'true');
+  assert.equal(asked, 0, 'the Fullscreen API is never used any more');
 });
 
-test('when the API is refused it falls back to immersive and says why', async () => {
-  // leaving fullscreen first
-  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => null });
-  document.dispatchEvent(new window.Event('fullscreenchange'));
+test('Esc shrinks it back to the windowed view', async () => {
+  assert.equal(document.body.classList.contains('is-immersive'), true, 'starting full');
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle();
-
-  play().requestFullscreen = () => Promise.reject(new window.DOMException('denied', 'NotAllowedError'));
-  let notice = null;
-  // the notice surfaces through the page's toast hook
-  click('[data-action="fullscreen"]');
-  await settle();
-  const toast = document.querySelector('#toast');
-  notice = toast.textContent;
-  assert.equal(document.body.classList.contains('is-immersive'), true, 'fills the window instead');
-  assert.match(notice, /blocked|fullscreen/i, `expected an explanation, got "${notice}"`);
-  assert.equal(play().querySelector('[data-action="fullscreen"]').textContent, 'Exit fullscreen');
-
-  click('[data-action="fullscreen"]');
-  await settle();
-  assert.equal(document.body.classList.contains('is-immersive'), false, 'toggles back off');
+  assert.equal(document.body.classList.contains('is-immersive'), false, 'Esc leaves fullscreen');
+  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'and stays on the build');
   assert.equal(play().querySelector('[data-action="fullscreen"]').textContent, 'Fullscreen');
 });
 
-test('escape leaves immersive mode before it navigates away', async () => {
-  // set up its own state: the API is refused here, so we land in immersive mode
-  play().requestFullscreen = () => Promise.reject(new window.DOMException('denied', 'NotAllowedError'));
-  click('[data-action="fullscreen"]');
-  await settle();
-  assert.equal(document.body.classList.contains('is-immersive'), true, 'starting immersive');
-
+test('Esc goes back only when it is not fullscreen, and never while the game has the keys', async () => {
+  // windowed + page keys -> Esc navigates up
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await settle();
-  assert.equal(document.body.classList.contains('is-immersive'), false, 'immersive off');
-  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'still on the build');
+  assert.equal(hash(), '#/play/1.5.2', 'Esc left the build');
 
-  // a second escape now walks up the stack
-  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await settle();
-  assert.equal(hash(), '#/play/1.5.2', 'back on the build list');
-
-  // and forward again for the remaining tests
   click('[data-mirror="1.5.2::152-wasm-1"]');
   await settle();
-  assert.equal(hash(), '#/play/1.5.2/152-wasm-1');
+  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'back on the build');
+
+  // now the game has the keys: the page must not act on Esc at all
+  click('[data-stage]');
+  await settle();
+  assert.match(play().querySelector('[data-keys]').textContent, /keyboard: game/);
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await settle();
+  assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'Esc belongs to the game now');
 });
 
 /* ------------------------------------------------------------------ *
@@ -321,7 +333,7 @@ test('the back-to-calculator button restores the graph untouched', async () => {
 
 test('the launcher never mentions where the builds come from', () => {
   const text = document.querySelector('#play-page').textContent.toLowerCase();
-  for (const word of ['iframe', 'third-party', 'third party', 'eaglercraft', 'http:', 'eagler']) {
+  for (const word of ['iframe', 'third-party', 'third party', 'http:', 'embed', 'mirror url']) {
     assert.ok(!text.includes(word), `play page copy should not mention "${word}"`);
   }
 });

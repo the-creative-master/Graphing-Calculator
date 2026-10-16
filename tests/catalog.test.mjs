@@ -10,6 +10,7 @@ import {
   engineCounts,
   entryPath,
   mirrorPath,
+  isDirectPlay,
 } from '../src/catalog.js';
 
 console.log('\ncatalog');
@@ -19,10 +20,10 @@ const urlsOf = (entry) => Object.fromEntries(entry.mirrors.map((mirror) => [mirr
 const jsCount = (entry) => entry.mirrors.filter((m) => m.engine === 'JS').length;
 const wasmCount = (entry) => entry.mirrors.filter((m) => m.engine === 'WASM').length;
 
-test('three versions and two clients are on the shelf', () => {
+test('five versions and two clients are on the shelf', () => {
   assert.deepEqual(
     VERSIONS.map((v) => v.id),
-    ['1.8.8', '1.12.2', '1.5.2'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2'],
   );
   assert.deepEqual(
     CLIENTS.map((c) => c.id),
@@ -30,9 +31,9 @@ test('three versions and two clients are on the shelf', () => {
   );
   assert.deepEqual(
     CATALOG.map((entry) => entry.id),
-    ['1.8.8', '1.12.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
   );
-  assert.equal(countBuilds(), 24, '16 version builds + 8 client builds');
+  assert.equal(countBuilds(), 27, '19 version builds + 8 client builds');
 });
 
 test('entries are tagged by kind so the page can section them', () => {
@@ -100,6 +101,34 @@ test('1.5.2 keeps its single WASM build', () => {
   assert.equal(wasmCount(version), 1, 'no WASM mirror 2 or 3 for 1.5.2');
 });
 
+test('EaglercraftPhi 1.9.4 has its two mirrors', () => {
+  const version = ENTRY_INDEX.get('1.9.4');
+  assert.equal(version.name, 'EaglercraftPhi 1.9.4');
+  assert.deepEqual(urlsOf(version), {
+    'Mirror 1': 'https://gx-launcher-v1.github.io/1.9.4/index.html',
+    'Mirror 2': 'https://d3vtoo1s.github.io/Eaglercraft-1.9.4/clients/Eaglercraft.html',
+  });
+  assert.equal(isDirectPlay(version), false, 'two mirrors => still worth a menu');
+  const groups = groupMirrors(version);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].key, 'any', 'no engine split for plain mirrors');
+});
+
+test('EaglercraftZ 1.11.2 has a single mirror and skips the picker', () => {
+  const version = ENTRY_INDEX.get('1.11.2');
+  assert.equal(version.name, 'EaglercraftZ 1.11.2');
+  assert.deepEqual(urlsOf(version), {
+    'Mirror 1': 'https://gx-launcher-v1.github.io/1.11.2/index.html',
+  });
+  assert.equal(isDirectPlay(version), true, 'one mirror => open it straight away');
+  assert.equal(mirrorPath(version, version.mirrors[0]), '/play/1.11.2/1112-1');
+});
+
+test('isDirectPlay is true for exactly the single-build entries', () => {
+  const direct = CATALOG.filter(isDirectPlay).map((entry) => entry.id);
+  assert.deepEqual(direct, ['1.11.2']);
+});
+
 test('Astra Client has two JS builds and three WASM builds', () => {
   const client = ENTRY_INDEX.get('astra');
   assert.deepEqual(urlsOf(client), {
@@ -140,6 +169,8 @@ test('engine counts drive the chips on each card', () => {
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.5.2')), { JS: 3, WASM: 1, other: 0 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('astra')), { JS: 2, WASM: 3, other: 0 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('resent')), { JS: 0, WASM: 0, other: 3 });
+  assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.9.4')), { JS: 0, WASM: 0, other: 2 });
+  assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.11.2')), { JS: 0, WASM: 0, other: 1 });
 });
 
 test('paths are stable and encoded', () => {

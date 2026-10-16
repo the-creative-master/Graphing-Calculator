@@ -4,19 +4,20 @@
  * A full page (not an overlay) with three screens, driven by the router:
  *
  *   #/play              the shelf: every version and client
- *   #/play/1.8.8        the builds for one entry
+ *   #/play/1.8.8        the builds for one entry (skipped if there's only one)
  *   #/play/1.8.8/x      the build, running, filling the window
  *
- * Two things this file is careful about, because they used to be broken:
+ * Two behaviours this file is responsible for:
  *
- *  1. Keyboard — keys belong to the running build. The frame is focused as soon
- *     as it loads and whenever the player clicks it, no single-letter shortcuts
- *     are stolen, and the page tells the player when the browser is still
- *     sending its keystrokes to the page instead.
- *  2. Fullscreen — the real API is used when it is available (with vendor
- *     prefixes), and when a browser or embedding context refuses, the page falls
- *     back to an immersive full-window mode *with an explanation* rather than
- *     silently doing nothing.
+ *  1. Fullscreen is mocked, not requested. The Fullscreen button expands the
+ *     running view until it is the whole window; Esc shrinks it back. No
+ *     permissions, no vendor prefixes, no "blocked" dead ends.
+ *
+ *  2. The keyboard belongs to whoever you meant it for. Keys go to the game;
+ *     press K and they go to the page (Esc then works), press K again and they
+ *     go back to the game. Clicking either surface picks it too, and the state
+ *     is always visible in the control bar, so keystrokes never get eaten
+ *     silently.
  */
 import {
   VERSIONS,
@@ -26,29 +27,15 @@ import {
   groupMirrors,
   countBuilds,
   engineCounts,
+  isDirectPlay,
   entryPath,
   mirrorPath,
 } from './catalog.js';
 
 const LOAD_HINT_DELAY = 9000;
 
-/* ------------------------------------------------------------------ *
- * Fullscreen helpers (vendor prefixes included)
- * ------------------------------------------------------------------ */
-
-const requestFullscreen = (element) =>
-  element.requestFullscreen?.({ navigationUI: 'hide' }) ??
-  element.webkitRequestFullscreen?.() ??
-  element.mozRequestFullScreen?.() ??
-  element.msRequestFullscreen?.();
-
-const exitFullscreen = (doc) =>
-  doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.() ?? doc.mozCancelFullScreen?.() ?? doc.msExitFullscreen?.();
-
-const fullscreenElement = (doc) =>
-  doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.mozFullScreenElement ?? doc.msFullscreenElement ?? null;
-
-const FULLSCREEN_EVENTS = ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'];
+/** Keys that would otherwise scroll or jump the page while the game has none. */
+const GAMEPLAY_KEY = /^(?:[a-zA-Z0-9 ]|Arrow(?:Up|Down|Left|Right))$/;
 
 export class PlayPage {
   constructor(root, router) {
@@ -57,7 +44,9 @@ export class PlayPage {
     this.route = { view: 'calculator' };
     this.current = null; // { entry, mirror }
     this.immersive = false;
+    this.keyTarget = 'page'; // 'game' | 'page'
     this.hintTimer = null;
+    this.nudgeShown = false;
     this.build();
   }
 
@@ -72,23 +61,26 @@ export class PlayPage {
       <header class="play__nav">
         <button type="button" class="play__home" data-action="calculator">← Calculator</button>
         <nav class="play__crumbs" data-crumbs aria-label="Breadcrumb"></nav>
-        <div class="play__nav-tools">
-          <span class="keys-chip" data-keys hidden></span>
-        </div>
       </header>
       <div class="play__body" data-body></div>
     `;
 
-    this.nav = this.root.querySelector('.play__nav');
     this.crumbs = this.root.querySelector('[data-crumbs]');
-    this.keysChip = this.root.querySelector('[data-keys]');
     this.body = this.root.querySelector('[data-body]');
 
     this.root.addEventListener('click', (event) => {
       const target = event.target.closest('[data-action], [data-entry], [data-mirror]');
       if (!target) return;
 
-      if (target.dataset.entry) return this.router.navigate(entryPath(ENTRY_INDEX.get(target.dataset.entry)));
+      // The keyboard button does its own toggling, so it must not be
+      // pre-empted by the "chrome click releases the keyboard" rule below.
+      if (target.dataset.action === 'keyboard') return this.toggleKeyboard();
+
+      // Any other click on the page chrome means the player wants the page
+      // (and its keys) back from the game.
+      this.setKeyTarget('page', { focus: false });
+
+      if (target.dataset.entry) return this.openEntry(ENTRY_INDEX.get(target.dataset.entry));
       if (target.dataset.mirror) return this.openMirror(target.dataset.mirror);
 
       switch (target.dataset.action) {
@@ -107,42 +99,47 @@ export class PlayPage {
       }
     });
 
-    // --- keyboard ---------------------------------------------------
+    // --- keyboard ----------------------------------------------------
+    // This only ever runs while the *page* has focus, which is exactly when the
+    // build is not receiving keys.
     this._onKeydown = (event) => {
       if (this.route.view !== 'game') return;
+      if (isTextEntry(event.target)) return;
 
-      // These only ever run while the *page* has focus: once the running build
-      // has focus, a cross-origin frame swallows the keystrokes, which is
-      // exactly what we want.
-      if (event.key === 'Escape') {
+      const { key } = event;
+
+      // K is the one shortcut the page always keeps: it hands the keyboard
+      // over to the game, and hands it back.
+      if (key === 'k' || key === 'K') {
+        event.preventDefault();
+        this.toggleKeyboard();
+        return;
+      }
+
+      if (this.keyTarget === 'game') return; // never fight the game for keys
+
+      if (key === 'Escape') {
         event.preventDefault();
         if (this.immersive) return this.setImmersive(false);
         return this.router.back();
       }
-      if (event.key === 'Tab') return undefined; // let focus move on purpose
-      // Anything else means the player is typing into the page, not the build.
-      return this.nudgeKeyboardFocus();
+
+      // Swallow gameplay keys so they can't scroll the page, and explain where
+      // they should be going instead.
+      if (GAMEPLAY_KEY.test(key)) {
+        event.preventDefault();
+        this.nudgeKeyboardFocus();
+      }
+      return undefined;
     };
 
-    // --- fullscreen state -------------------------------------------
-    this._onFullscreenChange = () => {
-      if (fullscreenElement(document)) this.setImmersive(false); // real fullscreen wins
-      this.syncControls();
-    };
-
-    // --- focus tracking ---------------------------------------------
-    // When the build takes focus the parent window blurs; when the player comes
-    // back to the page it fires focus. That is a cheap, reliable signal.
-    this._onWindowBlur = () => this.route.view === 'game' && this.setKeyTarget('game');
-    this._onWindowFocus = () => {
-      if (this.route.view !== 'game') return;
-      this.setKeyTarget('page');
-    };
+    // Focus tells us who has the keyboard: focusing the build blurs the page.
+    this._onWindowBlur = () => this.route.view === 'game' && this.setKeyTarget('game', { focus: false });
+    this._onWindowFocus = () => this.route.view === 'game' && this.setKeyTarget('page', { focus: false });
   }
 
   attachDocumentListeners() {
     document.addEventListener('keydown', this._onKeydown, false);
-    for (const name of FULLSCREEN_EVENTS) document.addEventListener(name, this._onFullscreenChange);
     window.addEventListener('blur', this._onWindowBlur);
     window.addEventListener('focus', this._onWindowFocus);
   }
@@ -189,9 +186,15 @@ export class PlayPage {
       .join('');
   }
 
+  /** Open an entry: straight to its only build, or to the picker if it has more. */
+  openEntry(entry) {
+    if (!entry) return;
+    if (isDirectPlay(entry)) return this.router.navigate(mirrorPath(entry, entry.mirrors[0]));
+    return this.router.navigate(entryPath(entry));
+  }
+
   renderCatalog() {
     this.setCrumbs([{ label: 'Home', action: 'calculator' }, { label: 'Play' }]);
-    this.keysChip.hidden = true;
     document.title = 'Play — Graphing Calculator';
 
     const section = (title, entries, blurb) => `
@@ -205,6 +208,7 @@ export class PlayPage {
           ${entries
             .map((entry) => {
               const counts = engineCounts(entry);
+              const direct = isDirectPlay(entry);
               return `
             <button type="button" class="entry-card" data-entry="${entry.id}">
               <span class="entry-card__top">
@@ -215,9 +219,9 @@ export class PlayPage {
               <span class="entry-card__meta">
                 ${counts.JS ? `<span class="chip">${counts.JS} × JS</span>` : ''}
                 ${counts.WASM ? `<span class="chip">${counts.WASM} × WASM</span>` : ''}
-                ${counts.other ? `<span class="chip">${counts.other} × mirror</span>` : ''}
+                ${counts.other ? `<span class="chip">${counts.other} × mirror${counts.other > 1 ? 's' : ''}</span>` : ''}
               </span>
-              <span class="entry-card__cta">Choose a build →</span>
+              <span class="entry-card__cta">${direct ? 'Play →' : 'Choose a build →'}</span>
             </button>`;
             })
             .join('')}
@@ -237,9 +241,10 @@ export class PlayPage {
   renderBuilds(entryId) {
     const entry = ENTRY_INDEX.get(entryId);
     if (!entry) return this.router.navigate('/play', { replace: true });
+    // A single build means there is nothing to choose — open it.
+    if (isDirectPlay(entry)) return this.router.navigate(mirrorPath(entry, entry.mirrors[0]), { replace: true });
 
     this.setCrumbs([{ label: 'Home', action: 'calculator' }, { label: 'Play', action: 'back' }, { label: entry.name }]);
-    this.keysChip.hidden = true;
     document.title = `${entry.name} — Graphing Calculator`;
 
     const groups = groupMirrors(entry);
@@ -289,13 +294,10 @@ export class PlayPage {
 
     const { entry, mirror } = found;
     this.current = { entry, mirror };
-
-    this.setCrumbs([
-      { label: 'Home', action: 'calculator' },
-      { label: 'Play', action: 'back' },
-      { label: entry.name, action: 'another' },
-      { label: mirror.label },
-    ]);
+    const crumbs = [{ label: 'Home', action: 'calculator' }, { label: 'Play', action: 'back' }];
+    if (!isDirectPlay(entry)) crumbs.push({ label: entry.name, action: 'another' });
+    crumbs.push({ label: isDirectPlay(entry) ? entry.name : mirror.label });
+    this.setCrumbs(crumbs);
     document.title = `${entry.name} · ${mirror.label} — Graphing Calculator`;
 
     this.body.innerHTML = `
@@ -308,6 +310,7 @@ export class PlayPage {
             ${mirror.note ? `<span class="build-btn__note${mirror.warn ? ' is-warn' : ''}">${mirror.warn ? '⚠ ' : ''}${mirror.note}</span>` : ''}
           </span>
           <span class="game-hud__buttons">
+            <button type="button" class="keys-btn" data-action="keyboard" data-keys></button>
             <button type="button" class="ghost-btn" data-action="fullscreen" aria-pressed="false">Fullscreen</button>
             <button type="button" class="ghost-btn" data-action="restart">Restart</button>
             <button type="button" class="ghost-btn" data-action="another">Another build</button>
@@ -331,9 +334,7 @@ export class PlayPage {
             referrerpolicy="no-referrer"
             loading="eager"
           ></iframe>
-          <button type="button" class="focus-toast" data-focus-toast hidden>
-            ⌨️ Click the game so it gets your keystrokes
-          </button>
+          <button type="button" class="focus-toast" data-focus-toast hidden></button>
         </div>
       </div>
     `;
@@ -344,19 +345,28 @@ export class PlayPage {
     this.frame = this.body.querySelector('[data-frame]');
     this.focusToast = this.body.querySelector('[data-focus-toast]');
     this.fullscreenBtn = this.body.querySelector('[data-action="fullscreen"]');
+    this.keysBtn = this.body.querySelector('[data-keys]');
 
     this.stage.classList.add('is-loading');
-    this.stage.addEventListener('click', () => this.focusGame());
+    this.stage.addEventListener('click', () => this.setKeyTarget('game'));
     this.stage.addEventListener('dblclick', () => this.toggleFullscreen());
-    this.focusToast.addEventListener('click', () => this.focusGame());
+    this.focusToast.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.toggleKeyboard();
+    });
 
     this.frame.addEventListener('load', () => {
       this.markLoaded();
-      this.focusGame(); // the build gets the keyboard straight away
+      // Blanks fired by a restart aren't a real load; don't let them pull the
+      // keyboard back while the player is clicking around the page.
+      if (this.frame?.getAttribute('src') === 'about:blank') return;
+      // Otherwise hand the keyboard straight to the build: that is what you came for.
+      this.setKeyTarget('game');
     });
 
-    this.setKeyTarget('page');
+    this.nudgeShown = false;
     this.syncControls();
+    this.syncKeysControl();
 
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => {
@@ -365,48 +375,75 @@ export class PlayPage {
   }
 
   /* ------------------------------------------------------------- *
-   * Running a build
+   * Keyboard ownership
    * ------------------------------------------------------------- */
 
-  /** Hand the keyboard to the running build. */
-  focusGame() {
-    if (!this.frame) return;
-    try {
-      this.frame.focus();
-      this.frame.contentWindow?.focus?.();
-    } catch {
-      // cross-origin frames may refuse the inner focus() — the frame focus above is enough
-    }
-    this.setKeyTarget('game');
-    this.hideFocusToast();
-  }
-
-  setKeyTarget(target) {
-    this.keyTarget = target;
-    if (!this.keysChip) return;
-    if (this.route.view !== 'game') {
-      this.keysChip.hidden = true;
-      return;
-    }
-    this.keysChip.hidden = false;
-    const toGame = target === 'game';
-    this.keysChip.textContent = toGame ? '⌨️ keys → build' : '⌨️ click the game';
-    this.keysChip.classList.toggle('is-warn', !toGame);
-  }
-
   /**
-   * The page got a keystroke, which means the build does not have focus — so
-   * the player's keys are going nowhere useful. Say so. It disappears the
-   * moment the build takes focus again, so it only ever appears when it is true.
+   * Point the keyboard at the game or at the page.
+   *
+   *   'game' — the build is focused, so its own keys (WASD, Esc, T, …) work.
+   *   'page' — the page is focused, so K and Esc work here.
+   *
+   * Focus decides this in practice, so we either move focus or just record it.
    */
-  nudgeKeyboardFocus() {
-    this.setKeyTarget('page');
-    if (this.focusToast) this.focusToast.hidden = false;
+  setKeyTarget(target, { focus = true } = {}) {
+    this.keyTarget = target === 'game' ? 'game' : 'page';
+
+    if (focus && this.keyTarget === 'game' && this.frame) {
+      try {
+        this.frame.focus();
+        this.frame.contentWindow?.focus?.();
+      } catch {
+        // a cross-origin build may refuse the inner focus; the frame focus stands
+      }
+    }
+
+    if (this.keyTarget === 'page' && focus) this.keysBtn?.focus?.();
+
+    this.syncKeysControl();
+    this.syncNudge();
   }
 
-  hideFocusToast() {
-    if (this.focusToast) this.focusToast.hidden = true;
+  /** K toggles between the two. */
+  toggleKeyboard() {
+    const next = this.keyTarget === 'game' ? 'page' : 'game';
+    this.setKeyTarget(next);
+    this.onNotice?.(
+      next === 'game'
+        ? '🎮 Keyboard locked to the game'
+        : '⌨️ Keyboard released — Esc exits fullscreen, K locks it again',
+    );
   }
+
+  syncKeysControl() {
+    const locked = this.keyTarget === 'game';
+    if (this.keysBtn) {
+      this.keysBtn.textContent = locked ? '🎮 keyboard: game' : '⌨️ keyboard: page';
+      this.keysBtn.classList.toggle('is-locked', locked);
+      this.keysBtn.title = locked
+        ? 'Your keys are going to the game. Click (or press K once the page has focus) to take them back.'
+        : 'Your keys are going to the page. Press K to send them to the game.';
+      this.keysBtn.setAttribute('aria-pressed', String(!locked));
+    }
+  }
+
+  /** Only nudge while the keys are on the page and the player seems to want otherwise. */
+  nudgeKeyboardFocus() {
+    if (this.keyTarget === 'game') return;
+    if (this.focusToast) {
+      this.focusToast.textContent = '⌨️ Press K to send your keys to the game';
+      this.focusToast.hidden = false;
+    }
+    this.nudgeShown = true;
+  }
+
+  syncNudge() {
+    if (this.nudgeShown && this.focusToast) this.focusToast.hidden = this.keyTarget === 'game';
+  }
+
+  /* ------------------------------------------------------------- *
+   * Running a build
+   * ------------------------------------------------------------- */
 
   markLoaded() {
     clearTimeout(this.hintTimer);
@@ -431,7 +468,8 @@ export class PlayPage {
     }
     this.stage?.classList.add('is-loading');
     if (this.hint) this.hint.hidden = true;
-    this.hideFocusToast();
+    if (this.focusToast) this.focusToast.hidden = true;
+    this.nudgeShown = false;
     clearTimeout(this.hintTimer);
     this.hintTimer = setTimeout(() => this.hint && (this.hint.hidden = false), LOAD_HINT_DELAY);
   }
@@ -453,98 +491,49 @@ export class PlayPage {
     this.stage = null;
     this.focusToast = null;
     this.fullscreenBtn = null;
+    this.keysBtn = null;
     this.current = null;
     this.setImmersive(false);
-    this.setKeyTarget('page');
+    this.keyTarget = 'page';
   }
 
   /* ------------------------------------------------------------- *
-   * Fullscreen (with a fallback that actually does something)
+   * Mock fullscreen: the running view becomes the whole window
    * ------------------------------------------------------------- */
 
   get isFullscreen() {
-    return Boolean(fullscreenElement(document));
+    return this.immersive;
   }
 
-  /** True when the browser will even allow a fullscreen request here. */
-  get fullscreenAvailable() {
-    const enabled = document.fullscreenEnabled ?? document.webkitFullscreenEnabled ?? true;
-    return Boolean(enabled && (this.root.requestFullscreen || this.root.webkitRequestFullscreen));
+  toggleFullscreen() {
+    this.setImmersive(!this.immersive);
   }
 
-  async toggleFullscreen() {
-    // Either flavour of "big" toggles off: real fullscreen, or the immersive
-    // fallback we used when the browser refused the real thing.
-    if (this.isFullscreen || this.immersive) {
-      await this.exitFullscreen();
-      return;
-    }
-    await this.enterFullscreen();
-  }
-
-  async enterFullscreen() {
-    if (!this.route || this.route.view !== 'game') return;
-
-    if (this.fullscreenAvailable) {
-      try {
-        await requestFullscreen(this.root);
-        this.setImmersive(false); // real fullscreen takes over from any fallback
-        this.syncControls();
-        return;
-      } catch {
-        // blocked (permissions policy, sandboxed frame, user denial) — fall through
-      }
-    }
-    this.setImmersive(true, this.fullscreenAvailable ? 'blocked' : 'unsupported');
-  }
-
-  async exitFullscreen() {
-    if (this.isFullscreen) {
-      try {
-        await exitFullscreen(document);
-      } catch {
-        /* nothing else we can do */
-      }
-    }
-    this.setImmersive(false);
-    this.syncControls();
-  }
-
-  /**
-   * Full-window mode that works even where the Fullscreen API is blocked:
-   * the site chrome steps aside so the build fills the window.
-   */
-  setImmersive(on, reason) {
+  setImmersive(on) {
     const next = Boolean(on) && this.route.view === 'game';
     if (this.immersive === next) {
-      if (next && reason) this.announceImmersion(reason);
+      this.syncControls();
       return;
     }
     this.immersive = next;
     document.body.classList.toggle('is-immersive', next);
-    if (next && reason) this.announceImmersion(reason);
+    this.root.classList.toggle('is-immersive', next);
     this.syncControls();
-    this.focusGame();
-  }
-
-  announceImmersion(reason) {
-    this.onNotice?.(
-      reason === 'blocked'
-        ? 'Browser fullscreen is blocked here — filling the window instead.'
-        : "This browser won't do fullscreen — filling the window instead.",
-    );
   }
 
   syncControls() {
     if (!this.fullscreenBtn) return;
-    const active = this.isFullscreen || this.immersive;
-    this.fullscreenBtn.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
-    this.fullscreenBtn.setAttribute('aria-pressed', String(active));
-    this.root.classList.toggle('is-immersive', this.immersive);
+    this.fullscreenBtn.textContent = this.immersive ? 'Exit fullscreen' : 'Fullscreen';
+    this.fullscreenBtn.setAttribute('aria-pressed', String(this.immersive));
   }
 }
 
 /** Is the route pointing at the build we already have loaded? */
 function sameBuild(current, route) {
   return Boolean(current) && current.entry.id === route.entryId && current.mirror.id === route.mirrorId;
+}
+
+/** Don't hijack typing in our own fields. */
+function isTextEntry(target) {
+  return /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? '');
 }

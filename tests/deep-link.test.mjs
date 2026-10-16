@@ -35,7 +35,7 @@ test('opening the shelf URL lists everything', async () => {
   const { document } = await at('#/play');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
   );
   assert.equal(document.querySelectorAll('.game-stage').length, 0, 'nothing is running yet');
 });
@@ -46,6 +46,32 @@ test('opening a builds URL lists just that entry', async () => {
     [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
     ['1.5.2::152-js-1', '1.5.2::152-js-2', '1.5.2::152-js-3', '1.5.2::152-wasm-1'],
   );
+});
+
+test('a single-mirror entry skips straight to running', async () => {
+  const { document, window } = await at('#/play/1.11.2');
+  const frame = document.querySelector('.game-stage iframe');
+  assert.equal(window.location.hash, '#/play/1.11.2/1112-1', 'redirected to its only build');
+  assert.ok(frame, 'and the build is mounted');
+  assert.equal(frame.getAttribute('src'), 'https://gx-launcher-v1.github.io/1.11.2/index.html');
+  assert.equal(document.querySelectorAll('[data-mirror]').length, 0, 'no picker was shown');
+});
+
+test('an entry with several mirrors still shows the picker', async () => {
+  const { document } = await at('#/play/1.9.4');
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
+    ['1.9.4::194-1', '1.9.4::194-2'],
+  );
+});
+
+test('the shelf card for a single-mirror entry plays immediately', async () => {
+  const app = await at('#/play');
+  app.click('[data-entry="1.11.2"]');
+  await app.settle(); // the hash change renders on the next turn
+  assert.equal(app.window.location.hash, '#/play/1.11.2/1112-1');
+  assert.ok(app.document.querySelector('.game-stage iframe'), 'the build is mounted');
+  assert.equal(app.document.querySelectorAll('[data-mirror]').length, 0, 'no picker in between');
 });
 
 test('a nonsense URL falls back instead of breaking', async () => {

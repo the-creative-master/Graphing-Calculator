@@ -54,6 +54,26 @@ export const VERSIONS = [
     ],
   },
   {
+    id: '1.9.4',
+    kind: 'version',
+    name: 'EaglercraftPhi 1.9.4',
+    subtitle: 'Phi build of 1.9.4',
+    mirrors: [
+      anyBuild('194-1', 'Mirror 1', 'https://gx-launcher-v1.github.io/1.9.4/index.html'),
+      anyBuild('194-2', 'Mirror 2', 'https://d3vtoo1s.github.io/Eaglercraft-1.9.4/clients/Eaglercraft.html'),
+    ],
+  },
+  {
+    id: '1.11.2',
+    kind: 'version',
+    name: 'EaglercraftZ 1.11.2',
+    subtitle: 'Z build of 1.11.2',
+    mirrors: [
+      // single build: the shelf skips the picker and opens it directly
+      anyBuild('1112-1', 'Mirror 1', 'https://gx-launcher-v1.github.io/1.11.2/index.html'),
+    ],
+  },
+  {
     id: '1.5.2',
     kind: 'version',
     name: '1.5.2',
@@ -149,6 +169,9 @@ export function engineCounts(entry) {
   }
   return counts;
 }
+
+/** True when there is nothing to choose: open it straight away. */
+export const isDirectPlay = (entry) => entry.mirrors.length === 1;
 
 /** Canonical link for an entry (builds page) and for a build (running page). */
 export const entryPath = (entry) => `/play/${encodeURIComponent(entry.id)}`;
