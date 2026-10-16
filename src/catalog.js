@@ -74,6 +74,17 @@ export const VERSIONS = [
     ],
   },
   {
+    id: '1.14.4',
+    kind: 'version',
+    name: '1.14.4',
+    subtitle: 'Village & Pillage era',
+    mirrors: [
+      jsBuild('1144-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.14.4/index.html'),
+      wasmBuild('1144-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.14.4-wasm/index.html'),
+      wasmBuild('1144-wasm-2', 'WASM Mirror 2', 'https://eaglercraft-1-14-4-u4.vercel.app/'),
+    ],
+  },
+  {
     id: '1.5.2',
     kind: 'version',
     name: '1.5.2',

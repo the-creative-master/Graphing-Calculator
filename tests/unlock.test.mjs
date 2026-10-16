@@ -3,37 +3,46 @@ import { UNLOCK_CODE, isUnlockCode, isUnlockCandidate, normalizeCode } from '../
 
 console.log('\nsecret code');
 
-test('the code is the short one, and it decodes to something fun', () => {
-  assert.equal(UNLOCK_CODE, 'TWluZWNyYWZ0');
-  assert.equal(UNLOCK_CODE.length, 12, 'short enough to type');
-  assert.equal(Buffer.from(UNLOCK_CODE, 'base64').toString('utf8'), 'Minecraft');
+test('the code is short enough to type', () => {
+  assert.equal(UNLOCK_CODE, 'MinecraftPls25-');
+  assert.equal(UNLOCK_CODE.length, 15);
+  assert.ok(UNLOCK_CODE.endsWith('-'), 'the trailing dash is part of it');
 });
 
 test('whitespace and a "y =" prefix are tolerated', () => {
-  assert.equal(normalizeCode(' TWluZW NyY WZ0 '), UNLOCK_CODE);
-  assert.equal(normalizeCode('y = TWluZWNyYWZ0'), UNLOCK_CODE);
-  assert.ok(isUnlockCode('  TWluZWNyYWZ0'));
-  assert.ok(isUnlockCode('y=TWluZWNyYWZ0'));
+  assert.equal(normalizeCode(' Minecraft Pls 25- '), 'minecraftpls25-');
+  assert.equal(normalizeCode('y = MinecraftPls25-'), 'minecraftpls25-');
+  assert.ok(isUnlockCode('  MinecraftPls25-'));
+  assert.ok(isUnlockCode('y=MinecraftPls25-'));
 });
 
-test('case matters (it is base64, not a phrase)', () => {
-  assert.ok(!isUnlockCode('twlunewnyywz0'));
-  assert.ok(!isUnlockCode('TwLuWeNyYwZ0'));
+test('capitalisation does not matter', () => {
+  assert.ok(isUnlockCode('minecraftpls25-'));
+  assert.ok(isUnlockCode('MINECRAFTPLS25-'));
+  assert.ok(isUnlockCode('MiNeCrAfTpLs25-'));
 });
 
 test('lookalikes do not unlock', () => {
-  for (const near of ['', 'TWluZWNyYWZ0X', 'TWluZWNyY', 'X TWluZWNyYWZ0', 'sin(x)', '2x + 1', 'TWluZWNyYWZ0 1']) {
-    assert.ok(!isUnlockCode(near), `"${near}" must not unlock`);
+  const near = [
+    '',
+    'MinecraftPls25',
+    'MinecraftPls25-1',
+    'Minecraft',
+    'MinecraftPls25-X',
+    'sin(x)',
+    '2x + 1',
+  ];
+  for (const text of near) {
+    assert.ok(!isUnlockCode(text), `"${text}" must not unlock`);
   }
 });
 
-test('candidates cover every prefix but not the whole code', () => {
-  assert.ok(isUnlockCandidate('T'));
-  assert.ok(isUnlockCandidate('TWlu'));
+test('candidates cover every prefix but not a wrong character', () => {
+  assert.ok(isUnlockCandidate('M'));
+  assert.ok(isUnlockCandidate('mine'));
   assert.ok(isUnlockCandidate(UNLOCK_CODE.slice(0, -1)));
   assert.ok(!isUnlockCandidate(''), 'empty input is not a candidate');
   assert.ok(!isUnlockCandidate('Q'), 'unrelated input is not a candidate');
-  // a complete code is handled by isUnlockCode, not left as a candidate error
   assert.ok(!isUnlockCandidate(UNLOCK_CODE.slice(0, -1) + 'X'));
 });
 

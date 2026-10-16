@@ -35,7 +35,7 @@ test('opening the shelf URL lists everything', async () => {
   const { document } = await at('#/play');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
   );
   assert.equal(document.querySelectorAll('.game-stage').length, 0, 'nothing is running yet');
 });
@@ -45,6 +45,18 @@ test('opening a builds URL lists just that entry', async () => {
   assert.deepEqual(
     [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
     ['1.5.2::152-js-1', '1.5.2::152-js-2', '1.5.2::152-js-3', '1.5.2::152-wasm-1'],
+  );
+});
+
+test('1.14.4 splits its builds into JS and WASM', async () => {
+  const { document } = await at('#/play/1.14.4');
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
+    ['1.14.4::1144-js-1', '1.14.4::1144-wasm-1', '1.14.4::1144-wasm-2'],
+  );
+  assert.deepEqual(
+    [...document.querySelectorAll('.build-group__label .engine-tag')].map((el) => el.textContent),
+    ['JS', 'WASM'],
   );
 });
 

@@ -34,6 +34,9 @@ import {
 
 const LOAD_HINT_DELAY = 9000;
 
+/** In fullscreen the controls appear, then get out of the way after this long. */
+const HUD_HIDE_DELAY = 1000;
+
 /** Keys that would otherwise scroll or jump the page while the game has none. */
 const GAMEPLAY_KEY = /^(?:[a-zA-Z0-9 ]|Arrow(?:Up|Down|Left|Right))$/;
 
@@ -46,6 +49,7 @@ export class PlayPage {
     this.immersive = false;
     this.keyTarget = 'page'; // 'game' | 'page'
     this.hintTimer = null;
+    this.hudTimer = null;
     this.nudgeShown = false;
     this.build();
   }
@@ -136,12 +140,16 @@ export class PlayPage {
     // Focus tells us who has the keyboard: focusing the build blurs the page.
     this._onWindowBlur = () => this.route.view === 'game' && this.setKeyTarget('game', { focus: false });
     this._onWindowFocus = () => this.route.view === 'game' && this.setKeyTarget('page', { focus: false });
+
+    // Any pointer movement in fullscreen brings the controls back for a moment.
+    this._onPointerMove = () => this.immersive && this.showHud();
   }
 
   attachDocumentListeners() {
     document.addEventListener('keydown', this._onKeydown, false);
     window.addEventListener('blur', this._onWindowBlur);
     window.addEventListener('focus', this._onWindowFocus);
+    document.addEventListener('pointermove', this._onPointerMove, { passive: true });
   }
 
   /* ------------------------------------------------------------- *
@@ -346,6 +354,7 @@ export class PlayPage {
     this.focusToast = this.body.querySelector('[data-focus-toast]');
     this.fullscreenBtn = this.body.querySelector('[data-action="fullscreen"]');
     this.keysBtn = this.body.querySelector('[data-keys]');
+    this.hud = this.body.querySelector('.game-hud');
 
     this.stage.classList.add('is-loading');
     this.stage.addEventListener('click', () => this.setKeyTarget('game'));
@@ -484,6 +493,8 @@ export class PlayPage {
   teardownGame() {
     clearTimeout(this.hintTimer);
     this.hintTimer = null;
+    clearTimeout(this.hudTimer);
+    this.hudTimer = null;
     if (this.frame) this.frame.src = 'about:blank';
     this.frame = null;
     this.loading = null;
@@ -492,6 +503,7 @@ export class PlayPage {
     this.focusToast = null;
     this.fullscreenBtn = null;
     this.keysBtn = null;
+    this.hud = null;
     this.current = null;
     this.setImmersive(false);
     this.keyTarget = 'page';
@@ -518,7 +530,29 @@ export class PlayPage {
     this.immersive = next;
     document.body.classList.toggle('is-immersive', next);
     this.root.classList.toggle('is-immersive', next);
+
+    if (next) {
+      // show the controls so the way out is obvious, then get out of the way
+      this.showHud();
+      setTimeout(() => this.onNotice?.('Press Esc to leave fullscreen — K switches your keyboard'), 0);
+    } else {
+      clearTimeout(this.hudTimer);
+      this.setHudHidden(false);
+    }
+
     this.syncControls();
+  }
+
+  /** Bring the controls back (used on entry and on pointer movement). */
+  showHud() {
+    clearTimeout(this.hudTimer);
+    this.setHudHidden(false);
+    if (!this.immersive) return;
+    this.hudTimer = setTimeout(() => this.setHudHidden(true), HUD_HIDE_DELAY);
+  }
+
+  setHudHidden(hidden) {
+    this.root.classList.toggle('is-hud-hidden', Boolean(hidden));
   }
 
   syncControls() {

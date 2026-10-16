@@ -150,6 +150,9 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
     }
   };
 
+  /** Wait real milliseconds, letting the page's own timers run. */
+  const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
   const click = (selector) => {
     const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
     if (el) el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -210,5 +213,5 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
     return { left, right, width, height };
   };
 
-  return { dom, window, document, canvas: raster, errors, bootError, frame, settle, click, type, pixels, countColour, countColourSides, ROOT };
+  return { dom, window, document, canvas: raster, errors, bootError, frame, settle, wait, click, type, pixels, countColour, countColourSides, ROOT };
 }

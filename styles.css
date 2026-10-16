@@ -1427,13 +1427,20 @@ body.is-immersive {
   padding: 6px 8px;
   background: rgba(6, 9, 16, 0.78);
   backdrop-filter: blur(10px);
-  opacity: 0.28;
-  transition: opacity 0.18s ease;
+  opacity: 1;
+  transition: opacity 0.25s ease;
 }
 
-.play.is-immersive .game-hud:hover,
-.play.is-immersive .game-hud:focus-within {
+/* After a second of stillness the controls fade away so nothing is in the way;
+   moving the mouse brings them straight back. */
+.play.is-immersive.is-hud-hidden .game-hud {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.play.is-immersive.is-hud-hidden .game-hud:focus-within {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .play.is-immersive .game-stage {

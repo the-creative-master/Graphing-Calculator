@@ -20,10 +20,10 @@ const urlsOf = (entry) => Object.fromEntries(entry.mirrors.map((mirror) => [mirr
 const jsCount = (entry) => entry.mirrors.filter((m) => m.engine === 'JS').length;
 const wasmCount = (entry) => entry.mirrors.filter((m) => m.engine === 'WASM').length;
 
-test('five versions and two clients are on the shelf', () => {
+test('six versions and two clients are on the shelf', () => {
   assert.deepEqual(
     VERSIONS.map((v) => v.id),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2'],
   );
   assert.deepEqual(
     CLIENTS.map((c) => c.id),
@@ -31,9 +31,9 @@ test('five versions and two clients are on the shelf', () => {
   );
   assert.deepEqual(
     CATALOG.map((entry) => entry.id),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
   );
-  assert.equal(countBuilds(), 27, '19 version builds + 8 client builds');
+  assert.equal(countBuilds(), 30, '22 version builds + 8 client builds');
 });
 
 test('entries are tagged by kind so the page can section them', () => {
@@ -127,6 +127,19 @@ test('EaglercraftZ 1.11.2 has a single mirror and skips the picker', () => {
 test('isDirectPlay is true for exactly the single-build entries', () => {
   const direct = CATALOG.filter(isDirectPlay).map((entry) => entry.id);
   assert.deepEqual(direct, ['1.11.2']);
+});
+
+test('1.14.4 has one JS build and two WASM builds', () => {
+  const version = ENTRY_INDEX.get('1.14.4');
+  assert.deepEqual(urlsOf(version), {
+    'JS Mirror 1': 'https://gx-launcher.github.io/game/1.14.4/index.html',
+    'WASM Mirror 1': 'https://gx-launcher.github.io/game/1.14.4-wasm/index.html',
+    'WASM Mirror 2': 'https://eaglercraft-1-14-4-u4.vercel.app/',
+  });
+  assert.equal(jsCount(version), 1);
+  assert.equal(wasmCount(version), 2);
+  assert.deepEqual(groupMirrors(version).map((g) => g.key), ['js', 'wasm']);
+  assert.equal(isDirectPlay(version), false, 'three builds means a picker');
 });
 
 test('Astra Client has two JS builds and three WASM builds', () => {

@@ -16,7 +16,7 @@ import { bootApp } from './boot-app.mjs';
 
 console.log('\napp smoke test (jsdom)');
 
-const { window, document, errors, bootError, click, type, settle } = await bootApp();
+const { window, document, errors, bootError, click, type, settle, wait } = await bootApp();
 
 const rowInputs = () => [...document.querySelectorAll('.expr-row__input')];
 const play = () => document.querySelector('#play-page');
@@ -61,7 +61,7 @@ test('a bad formula surfaces a friendly error, a good one does not', () => {
 });
 
 test('half-typed secrets do not flash a parse error', async () => {
-  type(rowInputs()[0], 'TWlu');
+  type(rowInputs()[0], 'Minecraft');
   await settle();
   assert.deepEqual(visibleErrorText(), []);
   assert.equal(hash(), '', 'and do not navigate yet');
@@ -72,7 +72,7 @@ test('half-typed secrets do not flash a parse error', async () => {
  * ------------------------------------------------------------------ */
 
 test('the code navigates to a real page with a real URL', async () => {
-  type(rowInputs()[0], 'TWluZWNyYWZ0');
+  type(rowInputs()[0], 'MinecraftPls25-');
   await settle();
   assert.equal(hash(), '#/play', 'the URL changed');
   assert.equal(play().hidden, false, 'play page shown');
@@ -87,10 +87,10 @@ test('the shelf lists versions and clients', () => {
   assert.deepEqual(sections, ['Versions', 'Clients']);
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
   );
   const text = play().textContent;
-  for (const name of ['Astra Client', 'Resent Client', '1.5.2', 'EaglercraftPhi 1.9.4', 'EaglercraftZ 1.11.2']) {
+  for (const name of ['Astra Client', 'Resent Client', '1.5.2', 'EaglercraftPhi 1.9.4', 'EaglercraftZ 1.11.2', '1.14.4']) {
     assert.ok(text.includes(name), `${name} should be listed`);
   }
   assert.match(text, /nothing to install/);
@@ -116,7 +116,7 @@ test('the browser back button works (hash history)', async () => {
   assert.equal(hash(), '#/play', 'back to the shelf');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
   );
   click('[data-entry="1.5.2"]');
   await settle();
@@ -247,6 +247,27 @@ test('Fullscreen fills the window and requests nothing from the browser', async 
   assert.equal(asked, 0, 'the Fullscreen API is never used any more');
 });
 
+test('the controls get out of the way after a second — and come back on movement', async () => {
+  const hidden = () => play().classList.contains('is-hud-hidden');
+
+  // entering fullscreen shows the controls immediately
+  assert.equal(hidden(), false, 'controls are visible the moment you go fullscreen');
+
+  await wait(1200);
+  assert.equal(hidden(), true, 'after a second of stillness they fade away');
+
+  // any mouse movement brings them back, then they fade again
+  document.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+  assert.equal(hidden(), false, 'moving the pointer brings them back');
+  await wait(1200);
+  assert.equal(hidden(), true, 'and they fade again');
+
+  // while hidden, the way out is still there: Esc works, and moving the mouse shows the button
+  document.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true }));
+  await settle();
+  assert.ok(play().querySelector('[data-action="fullscreen"]'), 'the exit button is present');
+});
+
 test('Esc shrinks it back to the windowed view', async () => {
   assert.equal(document.body.classList.contains('is-immersive'), true, 'starting full');
   document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -254,6 +275,7 @@ test('Esc shrinks it back to the windowed view', async () => {
   assert.equal(document.body.classList.contains('is-immersive'), false, 'Esc leaves fullscreen');
   assert.equal(hash(), '#/play/1.5.2/152-wasm-1', 'and stays on the build');
   assert.equal(play().querySelector('[data-action="fullscreen"]').textContent, 'Fullscreen');
+  assert.equal(play().classList.contains('is-hud-hidden'), false, 'and the controls are back for good');
 });
 
 test('Esc goes back only when it is not fullscreen, and never while the game has the keys', async () => {
