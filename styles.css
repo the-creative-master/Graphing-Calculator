@@ -1072,6 +1072,9 @@ button.crumb:hover {
 }
 
 .entry-card {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1083,10 +1086,11 @@ button.crumb:hover {
   transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
 }
 
-.entry-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(91, 140, 255, 0.55);
-  background: linear-gradient(160deg, rgba(91, 140, 255, 0.22), rgba(255, 255, 255, 0.03));
+.entry-card:hover,
+.entry-card:focus-visible {
+  border-color: rgba(91, 140, 255, 0.6);
+  background: linear-gradient(160deg, rgba(91, 140, 255, 0.24), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 10px 30px rgba(91, 140, 255, 0.14);
 }
 
 .entry-card__top {
@@ -1114,6 +1118,7 @@ button.crumb:hover {
 }
 
 .entry-card__cta {
+  pointer-events: none; /* the card itself is the control */
   margin-top: auto;
   padding-top: 8px;
   font-size: 0.78rem;
@@ -1199,6 +1204,9 @@ button.crumb:hover {
 }
 
 .build-btn {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   width: 100%;
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr) auto;
@@ -1212,10 +1220,14 @@ button.crumb:hover {
   transition: background 0.14s ease, border-color 0.14s ease, transform 0.1s ease;
 }
 
-.build-btn:hover {
-  background: rgba(91, 140, 255, 0.13);
-  border-color: rgba(91, 140, 255, 0.45);
-  transform: translateX(2px);
+.build-btn:hover,
+.build-btn:focus-visible {
+  background: rgba(91, 140, 255, 0.14);
+  border-color: rgba(91, 140, 255, 0.5);
+}
+
+.build-btn > * {
+  pointer-events: none; /* the button itself is the control */
 }
 
 .build-btn__dot {

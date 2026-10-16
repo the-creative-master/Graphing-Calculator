@@ -177,8 +177,6 @@ function renderExpressions() {
       expression.source = input.value;
       if (isUnlockCode(input.value)) return triggerUnlock(expression);
       syncExpressions();
-      // half-typed secrets shouldn't flash "unknown name" at the user
-      if (isUnlockCandidate(input.value)) clearRowError(expression.id);
       persist();
     });
 
@@ -267,15 +265,6 @@ function focusLastInput() {
   focusExpression(state.expressions.at(-1)?.id);
 }
 
-/** Hide the error line for a single row (used while a secret is being typed). */
-function clearRowError(id) {
-  const row = rowsHost.querySelector(`.expr-row[data-id="${id}"]`);
-  if (!row) return;
-  row.classList.remove('has-error');
-  const error = row.querySelector('.expr-row__error');
-  if (error) error.hidden = true;
-}
-
 /** Push state into the graph and refresh error messages. */
 function syncExpressions() {
   const compiled = graph.setExpressions(state.expressions);
@@ -283,9 +272,14 @@ function syncExpressions() {
     const row = rowsHost.querySelector(`.expr-row[data-id="${item.id}"]`);
     if (!row) continue;
     const error = row.querySelector('.expr-row__error');
-    error.hidden = !item.error;
-    error.textContent = item.error ?? '';
-    row.classList.toggle('has-error', Boolean(item.error));
+    // A half-typed secret is not a maths error: stay quiet until it is either
+    // finished (and unlocks) or clearly abandoned. This is decided on every
+    // sync, so another row's edit can't bring the message back.
+    const quiet = isUnlockCandidate(item.source ?? '');
+    const message = quiet ? '' : (item.error ?? '');
+    error.hidden = !message;
+    error.textContent = message;
+    row.classList.toggle('has-error', Boolean(message));
   }
   updateTable();
 }
@@ -444,6 +438,33 @@ resizeObserver.observe(canvas);
 
 window.addEventListener('resize', () => graph.resize());
 
+/**
+ * If the page has focus but no field does, the first character typed should land
+ * in the formula box rather than nowhere. (Autofocus is skipped on touch devices
+ * and can be missed on some setups, and a swallowed keystroke is the most
+ * frustrating possible bug: you type the formula — or the code — and nothing
+ * happens, so you type it again.)
+ *
+ * @returns {boolean} true when the keystroke was consumed here
+ */
+function typeIntoFormulaBox(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (event.key.length !== 1) return false; // printable characters only
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName ?? '')) return false;
+
+  const rows = [...rowsHost.querySelectorAll('.expr-row__input')];
+  const target = rows.find((input) => !input.value) ?? rows.at(-1);
+  if (!target) return false;
+
+  event.preventDefault();
+  target.focus();
+  const caret = target.value.length;
+  target.value = target.value.slice(0, caret) + event.key;
+  target.setSelectionRange?.(target.value.length, target.value.length);
+  target.dispatchEvent(new Event('input', { bubbles: true }));
+  return true;
+}
+
 /* ------------------------------------------------------------------ *
  * The whole point of this file (secret unlock)
  * ------------------------------------------------------------------ */
@@ -454,7 +475,6 @@ function triggerUnlock(expression) {
   const input = rowsHost.querySelector(`.expr-row[data-id="${expression.id}"] .expr-row__input`);
   if (input) input.value = '';
   syncExpressions();
-  clearRowError(expression.id);
   persist();
 
   router.navigate('/play');
@@ -529,8 +549,10 @@ graph.onViewport = (view) => {
 /* Keyboard shortcuts */
 document.addEventListener('keydown', (event) => {
   // never steal keystrokes from an input the user is typing in
-  const inField = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName ?? '');
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '');
   if (inField || router.route.view !== 'calculator') return;
+
+  if (typeIntoFormulaBox(event)) return;
   if (event.key === '+' || event.key === '=') {
     graph.zoomIn();
   } else if (event.key === '-' || event.key === '_') {

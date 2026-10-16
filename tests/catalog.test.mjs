@@ -20,10 +20,10 @@ const urlsOf = (entry) => Object.fromEntries(entry.mirrors.map((mirror) => [mirr
 const jsCount = (entry) => entry.mirrors.filter((m) => m.engine === 'JS').length;
 const wasmCount = (entry) => entry.mirrors.filter((m) => m.engine === 'WASM').length;
 
-test('six versions and two clients are on the shelf', () => {
+test('nine versions and two clients are on the shelf', () => {
   assert.deepEqual(
     VERSIONS.map((v) => v.id),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5'],
   );
   assert.deepEqual(
     CLIENTS.map((c) => c.id),
@@ -31,9 +31,9 @@ test('six versions and two clients are on the shelf', () => {
   );
   assert.deepEqual(
     CATALOG.map((entry) => entry.id),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
   );
-  assert.equal(countBuilds(), 30, '22 version builds + 8 client builds');
+  assert.equal(countBuilds(), 38, '30 version builds + 8 client builds');
 });
 
 test('entries are tagged by kind so the page can section them', () => {
@@ -127,6 +127,55 @@ test('EaglercraftZ 1.11.2 has a single mirror and skips the picker', () => {
 test('isDirectPlay is true for exactly the single-build entries', () => {
   const direct = CATALOG.filter(isDirectPlay).map((entry) => entry.id);
   assert.deepEqual(direct, ['1.11.2']);
+});
+
+test('1.13.2 has two JS builds and one WASM build', () => {
+  const version = ENTRY_INDEX.get('1.13.2');
+  assert.deepEqual(urlsOf(version), {
+    'JS Mirror 1': 'https://gx-launcher.github.io/game/1.13.2/index.html',
+    'JS Mirror 2': 'https://userarham.github.io/1.13.1-Eaglercraft-UNFORKED/',
+    'WASM Mirror 1': 'https://gx-launcher.github.io/game/1.13.2-wasm/index.html',
+  });
+  assert.deepEqual(groupMirrors(version).map((g) => g.key), ['js', 'wasm']);
+});
+
+test('the 1.13.2 second mirror carries an honest note', () => {
+  const mirror = ENTRY_INDEX.get('1.13.2').mirrors.find((m) => m.id === '1132-js-2');
+  assert.match(mirror.note, /1\.13\.1/);
+  assert.match(mirror.note, /not vanilla/i);
+  assert.notEqual(mirror.warn, true, 'it is a note, not a warning');
+});
+
+test('1.15.2 offers one JS build and one WASM build', () => {
+  const version = ENTRY_INDEX.get('1.15.2');
+  assert.deepEqual(urlsOf(version), {
+    'JS Mirror 1': 'https://eaglercraft.vip/clients/1.15/JS/vanilla/',
+    'WASM Mirror 1': 'https://eaglercraft.vip/clients/1.15/WASM/vanilla/',
+  });
+  assert.deepEqual(groupMirrors(version).map((g) => g.key), ['js', 'wasm']);
+  assert.equal(isDirectPlay(version), false, 'two builds is still a choice');
+});
+
+test('1.16.5 has one JS build and two WASM builds', () => {
+  const version = ENTRY_INDEX.get('1.16.5');
+  assert.deepEqual(urlsOf(version), {
+    'JS Mirror 1': 'https://gx-launcher.github.io/game/1.16.5/index.html',
+    'WASM Mirror 1': 'https://gx-launcher.github.io/game/1.16.5-wasm/index.html',
+    'WASM Mirror 2':
+      'https://10aoi21.github.io/Eaglercraft-1.16.5-Fixed-Version/eaglercraft-1.16.5-u3-Fixed.html',
+  });
+  assert.equal(wasmCount(version), 2);
+});
+
+test('every version reads in ascending order (after the popular one)', () => {
+  const parse = (id) => id.split('.').map(Number);
+  const ids = VERSIONS.slice(1).map((version) => version.id);
+  for (let i = 0; i < ids.length - 1; i++) {
+    const [a, b] = [parse(ids[i]), parse(ids[i + 1])];
+    const ascending = a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);
+    assert.ok(ascending, `${ids[i]} should come before ${ids[i + 1]}`);
+  }
+  assert.equal(VERSIONS[0].badge, 'Popular', 'the one everybody looks for leads');
 });
 
 test('1.14.4 has one JS build and two WASM builds', () => {

@@ -16,7 +16,7 @@ import { bootApp } from './boot-app.mjs';
 
 console.log('\napp smoke test (jsdom)');
 
-const { window, document, errors, bootError, click, type, settle, wait } = await bootApp();
+const { window, document, errors, bootError, click, tap, type, typeKeys, blurAll, settle, wait } = await bootApp();
 
 const rowInputs = () => [...document.querySelectorAll('.expr-row__input')];
 const play = () => document.querySelector('#play-page');
@@ -71,6 +71,46 @@ test('half-typed secrets do not flash a parse error', async () => {
  * The secret code -> the play page
  * ------------------------------------------------------------------ */
 
+test('typing with nothing focused lands in the formula box', async () => {
+  blurAll();
+  assert.equal(document.activeElement, document.body, 'nothing focused, like a device that skipped autofocus');
+
+  typeKeys('sin(2');
+  await settle();
+  assert.ok(rowInputs().includes(document.activeElement), 'the first keystroke gave the box focus');
+  assert.equal(rowInputs().at(-1).value, 'sin(2', 'and it was not swallowed');
+
+  type(rowInputs().at(-1), '');
+  // clear the other row too, so the next test starts from a clean sheet
+  type(rowInputs()[0], '');
+  await settle();
+  assert.deepEqual(visibleErrorText(), [], 'the sheet is clean again');
+});
+
+test('the code unlocks on the first attempt, even from an unfocused page', async () => {
+  blurAll();
+  typeKeys('MinecraftPls25-');
+  await settle();
+
+  assert.equal(hash(), '#/play', 'one pass is enough');
+  assert.equal(play().hidden, false);
+  assert.equal(document.querySelector('#app').hidden, true);
+  assert.deepEqual(visibleErrorText(), [], 'the code never leaves a parse error');
+});
+
+test('a lost first keystroke does not force a retype', async () => {
+  // back to the calculator, then type the code with a stray leading character
+  click('[data-action="calculator"]');
+  await settle();
+  blurAll();
+  typeKeys('nMinecraftPls25-');
+  await settle();
+  assert.equal(hash(), '#/play', 'the code at the end of the field still counts');
+
+  click('[data-action="calculator"]');
+  await settle();
+});
+
 test('the code navigates to a real page with a real URL', async () => {
   type(rowInputs()[0], 'MinecraftPls25-');
   await settle();
@@ -87,13 +127,69 @@ test('the shelf lists versions and clients', () => {
   assert.deepEqual(sections, ['Versions', 'Clients']);
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
   );
   const text = play().textContent;
-  for (const name of ['Astra Client', 'Resent Client', '1.5.2', 'EaglercraftPhi 1.9.4', 'EaglercraftZ 1.11.2', '1.14.4']) {
+  for (const name of ['Astra Client', 'Resent Client', '1.5.2', '1.13.2', '1.15.2', '1.16.5']) {
     assert.ok(text.includes(name), `${name} should be listed`);
   }
   assert.match(text, /nothing to install/);
+});
+
+test('the whole card is the control, not just its caption', async () => {
+  for (const part of ['.entry-card__name', '.entry-card__sub', '.entry-card__meta', '.entry-card__cta']) {
+    window.location.hash = '#/play';
+    await settle();
+    const card = document.querySelector('[data-entry="1.8.8"]');
+    const target = card.querySelector(part);
+    assert.ok(target, `${part} exists inside the card`);
+    target.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.equal(hash(), '#/play/1.8.8', `clicking ${part} should open the entry`);
+  }
+  window.location.hash = '#/play';
+  await settle();
+});
+
+test('a press that jitters a few pixels still activates the card', async () => {
+  // this is the real-world case: the card can shift under the cursor between
+  // press and release, and the browser then never fires a click at all
+  const card = document.querySelector('[data-entry="1.12.2"]');
+  tap(card, { from: { dx: 2, dy: 2 }, to: { dx: 4, dy: 5 } });
+  await settle();
+  assert.equal(hash(), '#/play/1.12.2', 'release-based activation still opened it');
+
+  window.location.hash = '#/play';
+  await settle();
+});
+
+test('dragging off a card does not open it', async () => {
+  const card = document.querySelector('[data-entry="1.9.4"]');
+  tap(card, { from: { dx: 0, dy: 0 }, to: { dx: 80, dy: 40 } });
+  await settle();
+  assert.equal(hash(), '#/play', 'a drag is not a tap');
+
+  // and the same gesture as a click (keyboard/assistive activation) still works
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await settle();
+  assert.equal(hash(), '#/play/1.9.4', 'plain clicks still work');
+  window.location.hash = '#/play';
+  await settle();
+});
+
+test('one gesture can only open one thing', async () => {
+  const card = document.querySelector('[data-entry="1.15.2"]');
+  tap(card);
+  await settle();
+  assert.equal(hash(), '#/play/1.15.2', 'opened the entry');
+  // the browser's synthesised click arrives right after the gesture: it must not
+  // be read as a second activation on whatever is now under the cursor
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await settle();
+  assert.equal(hash(), '#/play/1.15.2', 'still on the entry, not a level deeper');
+
+  window.location.hash = '#/play';
+  await settle();
 });
 
 test('a card navigates to that entry\u2019s builds (its own URL)', async () => {
@@ -116,7 +212,7 @@ test('the browser back button works (hash history)', async () => {
   assert.equal(hash(), '#/play', 'back to the shelf');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
   );
   click('[data-entry="1.5.2"]');
   await settle();

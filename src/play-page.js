@@ -37,6 +37,9 @@ const LOAD_HINT_DELAY = 9000;
 /** In fullscreen the controls appear, then get out of the way after this long. */
 const HUD_HIDE_DELAY = 1000;
 
+/** Everything on the page that behaves like a control. */
+const CONTROL = '[data-action], [data-entry], [data-mirror]';
+
 /** Keys that would otherwise scroll or jump the page while the game has none. */
 const GAMEPLAY_KEY = /^(?:[a-zA-Z0-9 ]|Arrow(?:Up|Down|Left|Right))$/;
 
@@ -72,35 +75,46 @@ export class PlayPage {
     this.crumbs = this.root.querySelector('[data-crumbs]');
     this.body = this.root.querySelector('[data-body]');
 
+    /**
+     * Controls are activated on *release*, not on the browser's click event.
+     *
+     * Why: a click is only dispatched when press and release share a target. Any
+     * reflow in between (a hover effect, a layout shift, a repaint) can move the
+     * control out from under the cursor, and the click is silently dropped — a
+     * card can look perfectly clickable and do nothing. Pairing the press with
+     * the release ourselves avoids that entirely, and behaving on release also
+     * makes touch and pen work the same way.
+     */
+    const hasPointerEvents = typeof window !== 'undefined' && 'PointerEvent' in window;
+    const DOWN = hasPointerEvents ? 'pointerdown' : 'mousedown';
+    const UP = hasPointerEvents ? 'pointerup' : 'mouseup';
+    const DRAG_TOLERANCE = 12; // px of movement that means "not a tap"
+
+    this.root.addEventListener(DOWN, (event) => {
+      if (event.button !== undefined && event.button !== 0) return this._press = null;
+      const control = event.target.closest?.(CONTROL);
+      this._press = control ? { control, x: event.clientX, y: event.clientY } : null;
+    });
+
+    this.root.addEventListener(UP, (event) => {
+      const press = this._press;
+      this._press = null;
+      if (!press) return;
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_TOLERANCE) return; // a drag, not a tap
+      // Remember which control this gesture already handled, so the click the
+      // browser synthesises right afterwards doesn't run it a second time.
+      this._handled = { control: press.control, until: performance.now() + 500 };
+      this.activate(press.control);
+    });
+
     this.root.addEventListener('click', (event) => {
-      const target = event.target.closest('[data-action], [data-entry], [data-mirror]');
-      if (!target) return;
-
-      // The keyboard button does its own toggling, so it must not be
-      // pre-empted by the "chrome click releases the keyboard" rule below.
-      if (target.dataset.action === 'keyboard') return this.toggleKeyboard();
-
-      // Any other click on the page chrome means the player wants the page
-      // (and its keys) back from the game.
-      this.setKeyTarget('page', { focus: false });
-
-      if (target.dataset.entry) return this.openEntry(ENTRY_INDEX.get(target.dataset.entry));
-      if (target.dataset.mirror) return this.openMirror(target.dataset.mirror);
-
-      switch (target.dataset.action) {
-        case 'calculator':
-          return this.router.navigate('/');
-        case 'back':
-          return this.router.back();
-        case 'fullscreen':
-          return this.toggleFullscreen();
-        case 'restart':
-          return this.reloadFrame();
-        case 'another':
-          return this.router.navigate(entryPath(this.current.entry));
-        default:
-          return undefined;
-      }
+      const control = event.target.closest?.(CONTROL);
+      // The click that follows our own release targets the control we just ran;
+      // anything else (a keyboard activation, or a different control) is real
+      // and must still work.
+      const handled = this._handled;
+      if (handled && performance.now() < handled.until && control === handled.control) return;
+      this.activate(control);
     });
 
     // --- keyboard ----------------------------------------------------
@@ -181,6 +195,37 @@ export class PlayPage {
         break;
       default:
         break;
+    }
+  }
+
+  /** Run the action attached to a control element. */
+  activate(target) {
+    if (!target) return undefined;
+
+    // The keyboard button does its own toggling, so it must not be
+    // pre-empted by the "chrome click releases the keyboard" rule below.
+    if (target.dataset.action === 'keyboard') return this.toggleKeyboard();
+
+    // Any other click on the page chrome means the player wants the page
+    // (and its keys) back from the game.
+    this.setKeyTarget('page', { focus: false });
+
+    if (target.dataset.entry) return this.openEntry(ENTRY_INDEX.get(target.dataset.entry));
+    if (target.dataset.mirror) return this.openMirror(target.dataset.mirror);
+
+    switch (target.dataset.action) {
+      case 'calculator':
+        return this.router.navigate('/');
+      case 'back':
+        return this.router.back();
+      case 'fullscreen':
+        return this.toggleFullscreen();
+      case 'restart':
+        return this.reloadFrame();
+      case 'another':
+        return this.router.navigate(entryPath(this.current.entry));
+      default:
+        return undefined;
     }
   }
 
@@ -358,6 +403,7 @@ export class PlayPage {
 
     this.stage.classList.add('is-loading');
     this.stage.addEventListener('click', () => this.setKeyTarget('game'));
+    this.stage.addEventListener('pointerdown', () => this.setKeyTarget('game'));
     this.stage.addEventListener('dblclick', () => this.toggleFullscreen());
     this.focusToast.addEventListener('click', (event) => {
       event.stopPropagation();

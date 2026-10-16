@@ -110,6 +110,10 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
       disconnect() {}
     };
 
+  // jsdom predates PointerEvent in some versions; the app prefers pointer
+  // events and falls back to mouse events, so make sure the preferred path is
+  // the one under test.
+  window.PointerEvent = window.PointerEvent ?? window.MouseEvent;
   window.Element.prototype.setPointerCapture = function setPointerCapture() {};
   window.Element.prototype.releasePointerCapture = function releasePointerCapture() {};
 
@@ -158,6 +162,37 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
     if (el) el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
     return el;
   };
+
+  /** A full press/release gesture, which is how controls are activated. */
+  const tap = (selector, { from = {}, to = {} } = {}) => {
+    const el = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!el) return null;
+    const box = { x: 40, y: 40 };
+    const press = { clientX: box.x + (from.dx ?? 0), clientY: box.y + (from.dy ?? 0), bubbles: true, button: 0 };
+    const release = { clientX: box.x + (to.dx ?? 0), clientY: box.y + (to.dy ?? 0), bubbles: true, button: 0 };
+    const PointerEvent = window.PointerEvent ?? window.MouseEvent;
+    el.dispatchEvent(new PointerEvent('pointerdown', press));
+    el.dispatchEvent(new PointerEvent('pointerup', release));
+    return el;
+  };
+
+  /** Type text the way a keyboard does: one keydown per character, on whatever
+   *  element currently has focus (falling back to the body). */
+  const typeKeys = (text) => {
+    for (const key of text) {
+      const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
+      target.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      // a real browser inserts the character into a focused field
+      if (/^(INPUT|TEXTAREA)$/.test(target.tagName)) {
+        target.value += key;
+        target.dispatchEvent(new window.Event('input', { bubbles: true }));
+      }
+    }
+    return document.activeElement;
+  };
+
+  /** Leave nothing focused, like a device where autofocus was skipped. */
+  const blurAll = () => document.activeElement?.blur?.();
 
   const type = (el, value) => {
     el.value = value;
@@ -213,5 +248,24 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
     return { left, right, width, height };
   };
 
-  return { dom, window, document, canvas: raster, errors, bootError, frame, settle, wait, click, type, pixels, countColour, countColourSides, ROOT };
+  return {
+    dom,
+    window,
+    document,
+    canvas: raster,
+    errors,
+    bootError,
+    frame,
+    settle,
+    wait,
+    click,
+    tap,
+    type,
+    typeKeys,
+    blurAll,
+    pixels,
+    countColour,
+    countColourSides,
+    ROOT,
+  };
 }

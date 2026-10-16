@@ -24,6 +24,8 @@ const wasmBuild = (id, label, url, extra = {}) => ({ id, label, url, engine: 'WA
 const anyBuild = (id, label, url, extra = {}) => ({ id, label, url, allow: GAME_ANY, ...extra });
 
 export const VERSIONS = [
+  // 1.8.8 is the one everybody looks for, so it stays at the front; the rest
+  // read in ascending version order.
   {
     id: '1.8.8',
     kind: 'version',
@@ -40,17 +42,16 @@ export const VERSIONS = [
     ],
   },
   {
-    id: '1.12.2',
+    id: '1.5.2',
     kind: 'version',
-    name: '1.12.2',
-    subtitle: 'Modded-era favourite',
+    name: '1.5.2',
+    subtitle: 'Golden-age survival',
     mirrors: [
-      jsBuild('1122-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.12.2/index.html'),
-      jsBuild('1122-js-2', 'JS Mirror 2', 'https://yee.pages.dev/#/MS4xMmpz'),
-      jsBuild('1122-js-3', 'JS Mirror 3', 'https://gx-launcher-v1.github.io/1.12.2/index.html'),
-      wasmBuild('1122-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.12.2-wasm/index.html'),
-      wasmBuild('1122-wasm-2', 'WASM Mirror 2', 'https://yee.pages.dev/#/MS4xMndhc20'),
-      wasmBuild('1122-wasm-3', 'WASM Mirror 3', 'https://gx-launcher-v1.github.io/1.12.2-wasm/index.html'),
+      jsBuild('152-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.5.2/index.html'),
+      jsBuild('152-js-2', 'JS Mirror 2', 'https://yee.pages.dev/#/MS41'),
+      jsBuild('152-js-3', 'JS Mirror 3', 'https://gx-launcher-v1.github.io/1.5.2/index.html'),
+      // 1.5.2 ships a single WASM build
+      wasmBuild('152-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.5.2-wasm/index.html'),
     ],
   },
   {
@@ -74,6 +75,33 @@ export const VERSIONS = [
     ],
   },
   {
+    id: '1.12.2',
+    kind: 'version',
+    name: '1.12.2',
+    subtitle: 'Modded-era favourite',
+    mirrors: [
+      jsBuild('1122-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.12.2/index.html'),
+      jsBuild('1122-js-2', 'JS Mirror 2', 'https://yee.pages.dev/#/MS4xMmpz'),
+      jsBuild('1122-js-3', 'JS Mirror 3', 'https://gx-launcher-v1.github.io/1.12.2/index.html'),
+      wasmBuild('1122-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.12.2-wasm/index.html'),
+      wasmBuild('1122-wasm-2', 'WASM Mirror 2', 'https://yee.pages.dev/#/MS4xMndhc20'),
+      wasmBuild('1122-wasm-3', 'WASM Mirror 3', 'https://gx-launcher-v1.github.io/1.12.2-wasm/index.html'),
+    ],
+  },
+  {
+    id: '1.13.2',
+    kind: 'version',
+    name: '1.13.2',
+    subtitle: 'Update Aquatic era',
+    mirrors: [
+      jsBuild('1132-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.13.2/index.html'),
+      jsBuild('1132-js-2', 'JS Mirror 2', 'https://userarham.github.io/1.13.1-Eaglercraft-UNFORKED/', {
+        note: 'Actually 1.13.1, and not vanilla',
+      }),
+      wasmBuild('1132-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.13.2-wasm/index.html'),
+    ],
+  },
+  {
     id: '1.14.4',
     kind: 'version',
     name: '1.14.4',
@@ -85,16 +113,28 @@ export const VERSIONS = [
     ],
   },
   {
-    id: '1.5.2',
+    id: '1.15.2',
     kind: 'version',
-    name: '1.5.2',
-    subtitle: 'Golden-age survival',
+    name: '1.15.2',
+    subtitle: 'Buzzy Bees era',
     mirrors: [
-      jsBuild('152-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.5.2/index.html'),
-      jsBuild('152-js-2', 'JS Mirror 2', 'https://yee.pages.dev/#/MS41'),
-      jsBuild('152-js-3', 'JS Mirror 3', 'https://gx-launcher-v1.github.io/1.5.2/index.html'),
-      // 1.5.2 ships a single WASM build
-      wasmBuild('152-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.5.2-wasm/index.html'),
+      jsBuild('1152-js-1', 'JS Mirror 1', 'https://eaglercraft.vip/clients/1.15/JS/vanilla/'),
+      wasmBuild('1152-wasm-1', 'WASM Mirror 1', 'https://eaglercraft.vip/clients/1.15/WASM/vanilla/'),
+    ],
+  },
+  {
+    id: '1.16.5',
+    kind: 'version',
+    name: '1.16.5',
+    subtitle: 'Nether Update era',
+    mirrors: [
+      jsBuild('1165-js-1', 'JS Mirror 1', 'https://gx-launcher.github.io/game/1.16.5/index.html'),
+      wasmBuild('1165-wasm-1', 'WASM Mirror 1', 'https://gx-launcher.github.io/game/1.16.5-wasm/index.html'),
+      wasmBuild(
+        '1165-wasm-2',
+        'WASM Mirror 2',
+        'https://10aoi21.github.io/Eaglercraft-1.16.5-Fixed-Version/eaglercraft-1.16.5-u3-Fixed.html',
+      ),
     ],
   },
 ];

@@ -17,9 +17,17 @@ export function normalizeCode(source) {
     .toLowerCase();
 }
 
-/** True when the typed text is the code (any capitalisation, no spaces). */
+/**
+ * True when the typed text is the code (any capitalisation, no spaces).
+ *
+ * The code also counts when it is what you just typed — i.e. when it sits at the
+ * end of the field. That way a stray earlier character (a mis-key, or a
+ * keystroke that landed before the box had focus) doesn't force a retype.
+ */
 export function isUnlockCode(source) {
-  return normalizeCode(source) === UNLOCK_CODE.toLowerCase();
+  const text = normalizeCode(source);
+  const code = UNLOCK_CODE.toLowerCase();
+  return text === code || text.endsWith(code);
 }
 
 /** True while the text is still being typed towards the code (hides parse errors). */

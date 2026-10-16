@@ -37,6 +37,15 @@ test('lookalikes do not unlock', () => {
   }
 });
 
+test('the code counts when it is what you just typed', () => {
+  // a stray character earlier in the box (a mis-key, or a keystroke that landed
+  // before the field had focus) must not force a retype
+  assert.ok(isUnlockCode('2x MinecraftPls25-'), 'code typed after other text');
+  assert.ok(isUnlockCode('nMinecraftPls25-'), 'one lost first keystroke');
+  // but a wrong tail is still not the code
+  assert.ok(!isUnlockCode('MinecraftPls25-x'));
+});
+
 test('candidates cover every prefix but not a wrong character', () => {
   assert.ok(isUnlockCandidate('M'));
   assert.ok(isUnlockCandidate('mine'));

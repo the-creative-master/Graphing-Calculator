@@ -35,7 +35,7 @@ test('opening the shelf URL lists everything', async () => {
   const { document } = await at('#/play');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.12.2', '1.9.4', '1.11.2', '1.14.4', '1.5.2', 'astra', 'resent'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent'],
   );
   assert.equal(document.querySelectorAll('.game-stage').length, 0, 'nothing is running yet');
 });
@@ -58,6 +58,30 @@ test('1.14.4 splits its builds into JS and WASM', async () => {
     [...document.querySelectorAll('.build-group__label .engine-tag')].map((el) => el.textContent),
     ['JS', 'WASM'],
   );
+});
+
+test('1.13.2, 1.15.2 and 1.16.5 expose their builds', async () => {
+  const expected = {
+    '1.13.2': ['1.13.2::1132-js-1', '1.13.2::1132-js-2', '1.13.2::1132-wasm-1'],
+    '1.15.2': ['1.15.2::1152-js-1', '1.15.2::1152-wasm-1'],
+    '1.16.5': ['1.16.5::1165-js-1', '1.16.5::1165-wasm-1', '1.16.5::1165-wasm-2'],
+  };
+  for (const [id, mirrors] of Object.entries(expected)) {
+    const { document } = await at(`#/play/${id}`);
+    assert.deepEqual(
+      [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
+      mirrors,
+      id,
+    );
+  }
+});
+
+test('the 1.13.2 note explains that mirror 2 is 1.13.1 and not vanilla', async () => {
+  const { document } = await at('#/play/1.13.2');
+  const notes = [...document.querySelectorAll('.build-btn__note')];
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].textContent, /1\.13\.1/);
+  assert.match(notes[0].textContent, /not vanilla/i);
 });
 
 test('a single-mirror entry skips straight to running', async () => {
