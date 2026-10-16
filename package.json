@@ -1,0 +1,20 @@
+{
+  "name": "graphing-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A modern graphing calculator (with one completely unrelated secret).",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node tests/math.test.mjs && node tests/mirrors.test.mjs && node tests/unlock.test.mjs && node tests/server.test.mjs && node tests/app.smoke.test.mjs",
+    "test:unit": "node tests/math.test.mjs && node tests/mirrors.test.mjs && node tests/unlock.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^30.1.3"
+  }
+}
