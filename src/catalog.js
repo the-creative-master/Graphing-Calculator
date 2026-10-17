@@ -181,6 +181,27 @@ export const CLIENTS = [
     badge: 'Client',
     mirrors: [anyBuild('ayuncraft-1', 'Mirror 1', 'https://gx-launcher-v1.github.io/Ayuncraft/index.html')],
   },
+  {
+    id: 'precision',
+    kind: 'client',
+    name: 'Precision Client',
+    subtitle: 'Clean PvP client build',
+    badge: 'Client',
+    mirrors: [
+      anyBuild('precision-1', 'Mirror 1', 'https://gx-launcher.github.io/game/Precision%20Client/index.html'),
+      anyBuild('precision-2', 'Mirror 2', 'https://playerepic76.github.io/PrecisionUnblocked/', {
+        note: 'Comes with texture packs',
+      }),
+    ],
+  },
+  {
+    id: 'reflex',
+    kind: 'client',
+    name: 'Reflex Client',
+    subtitle: 'Snappy PvP client build',
+    badge: 'Client',
+    mirrors: [anyBuild('reflex-1', 'Mirror 1', 'https://gx-launcher.github.io/game/Reflex%20Client/index.html')],
+  },
 ];
 
 /** Versions first, then clients. */

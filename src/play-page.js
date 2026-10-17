@@ -141,7 +141,7 @@ export class PlayPage {
       if (key === 'Escape') {
         event.preventDefault();
         if (this.immersive) return this.setImmersive(false);
-        return this.router.back();
+        return this.goUp();
       }
 
       // Swallow gameplay keys so they can't scroll the page, and explain where
@@ -220,6 +220,8 @@ export class PlayPage {
         return this.router.navigate('/');
       case 'back':
         return this.router.back();
+      case 'up':
+        return this.goUp();
       case 'fullscreen':
         return this.toggleFullscreen();
       case 'exit-immersive':
@@ -241,6 +243,18 @@ export class PlayPage {
           : `<span class="crumb crumb--current">${item.label}</span>`,
       )
       .join('');
+  }
+
+  /**
+   * Step up one level from the page you are on.
+   *
+   * Normally that is the build list, and going back through history is right.
+   * A single-build entry never shows a build list, so its "parent" URL only
+   * redirects back to the build — stepping up has to mean the shelf.
+   */
+  goUp() {
+    if (this.current && isDirectPlay(this.current.entry)) return this.router.navigate('/play');
+    return this.router.back() || this.router.navigate('/play');
   }
 
   /** Open an entry: straight to its only build, or to the picker if it has more. */
@@ -351,7 +365,12 @@ export class PlayPage {
 
     const { entry, mirror } = found;
     this.current = { entry, mirror };
-    const crumbs = [{ label: 'Home', action: 'calculator' }, { label: 'Play', action: 'back' }];
+    // With one build there is no build list behind this page, so "Play" goes
+    // straight to the shelf instead of bouncing off a redirect.
+    const crumbs = [
+      { label: 'Home', action: 'calculator' },
+      { label: 'Play', action: isDirectPlay(entry) ? 'up' : 'back' },
+    ];
     if (!isDirectPlay(entry)) crumbs.push({ label: entry.name, action: 'another' });
     crumbs.push({ label: isDirectPlay(entry) ? entry.name : mirror.label });
     this.setCrumbs(crumbs);

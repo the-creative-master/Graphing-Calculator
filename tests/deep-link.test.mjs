@@ -35,7 +35,7 @@ test('opening the shelf URL lists everything', async () => {
   const { document } = await at('#/play');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft', 'precision', 'reflex'],
   );
   assert.equal(document.querySelectorAll('.game-stage').length, 0, 'nothing is running yet');
 });
@@ -117,6 +117,23 @@ test('Ayuncraft plays from its own URL without a picker', async () => {
   assert.equal(
     app.document.querySelector('.game-stage iframe').getAttribute('src'),
     'https://gx-launcher-v1.github.io/Ayuncraft/index.html',
+  );
+});
+
+test('the new clients open from their own URLs', async () => {
+  const precision = await at('#/play/precision/precision-2');
+  assert.equal(
+    precision.document.querySelector('.game-stage iframe').getAttribute('src'),
+    'https://playerepic76.github.io/PrecisionUnblocked/',
+  );
+  assert.match(precision.document.querySelector('.game-hud').textContent, /texture packs/i);
+
+  const reflex = await at('#/play/reflex');
+  await reflex.settle();
+  assert.equal(reflex.window.location.hash, '#/play/reflex/reflex-1', 'its single build opens straight away');
+  assert.equal(
+    reflex.document.querySelector('.game-stage iframe').getAttribute('src'),
+    'https://gx-launcher.github.io/game/Reflex%20Client/index.html',
   );
 });
 

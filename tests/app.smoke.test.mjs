@@ -156,7 +156,7 @@ test('the shelf lists versions and clients', () => {
   assert.deepEqual(sections, ['Versions', 'Clients']);
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft', 'precision', 'reflex'],
   );
   const text = play().textContent;
   for (const name of ['Astra Client', 'Resent Client', '1.5.2', '1.13.2', '1.15.2', '1.16.5']) {
@@ -241,7 +241,7 @@ test('the browser back button works (hash history)', async () => {
   assert.equal(hash(), '#/play', 'back to the shelf');
   assert.deepEqual(
     [...document.querySelectorAll('[data-entry]')].map((el) => el.dataset.entry),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft', 'precision', 'reflex'],
   );
   click('[data-entry="1.5.2"]');
   await settle();
@@ -523,6 +523,73 @@ test('Ayuncraft is on the shelf and plays its one build immediately', async () =
     play().querySelector('iframe').getAttribute('src'),
     'https://gx-launcher-v1.github.io/Ayuncraft/index.html',
   );
+
+  // There is no build list behind a single-build entry, so stepping up has to
+  // lead to the shelf rather than bounce off a redirect.
+  click('[data-action="up"]');
+  await settle();
+  assert.equal(hash(), '#/play', 'the Play crumb leads back to the shelf');
+});
+
+test('Precision Client offers both mirrors and says one has texture packs', async () => {
+  const card = document.querySelector('[data-entry="precision"]');
+  assert.ok(card, 'it is on the shelf');
+  assert.match(card.textContent, /Precision Client/);
+
+  tap(card);
+  await settle();
+  assert.equal(hash(), '#/play/precision');
+  assert.deepEqual(
+    [...document.querySelectorAll('[data-mirror]')].map((el) => el.dataset.mirror),
+    ['precision::precision-1', 'precision::precision-2'],
+  );
+
+  const note = document.querySelector('[data-mirror="precision::precision-2"] .build-btn__note');
+  assert.ok(note, 'mirror 2 says what it brings');
+  assert.match(note.textContent, /texture packs/i);
+  assert.equal(note.classList.contains('is-warn'), false, 'a bonus, not a caution');
+  assert.equal(document.querySelectorAll('.build-btn__note').length, 1, 'only the second mirror');
+
+  tap('[data-mirror="precision::precision-2"]');
+  await settle();
+  assert.equal(hash(), '#/play/precision/precision-2');
+  assert.equal(
+    play().querySelector('iframe').getAttribute('src'),
+    'https://playerepic76.github.io/PrecisionUnblocked/',
+  );
+  assert.match(play().querySelector('.game-hud').textContent, /texture packs/i, 'and the running view says so too');
+});
+
+test('Reflex Client plays its one build and still finds its way home', async () => {
+  click('[data-action="back"]'); // game -> precision builds
+  await settle();
+  click('[data-action="back"]'); // builds -> shelf
+  await settle();
+
+  tap('[data-entry="reflex"]');
+  await settle();
+  assert.equal(hash(), '#/play/reflex/reflex-1', 'one build, so it opens straight away');
+  assert.equal(document.querySelectorAll('[data-mirror]').length, 0, 'no picker in between');
+  assert.equal(
+    play().querySelector('iframe').getAttribute('src'),
+    'https://gx-launcher.github.io/game/Reflex%20Client/index.html',
+  );
+
+  click('[data-action="up"]');
+  await settle();
+  assert.equal(hash(), '#/play');
+
+  // and Esc from the running build does the same, once the page has the keys
+  tap('[data-entry="reflex"]');
+  await settle();
+  const keys = play().querySelector('[data-keys]');
+  if (!/keyboard: page/.test(keys.textContent)) {
+    click('[data-keys]');
+    await settle();
+  }
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await settle();
+  assert.equal(hash(), '#/play', 'Esc left the single-build page instead of reloading it');
 });
 
 /* ------------------------------------------------------------------ *

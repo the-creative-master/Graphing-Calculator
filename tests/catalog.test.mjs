@@ -20,20 +20,20 @@ const urlsOf = (entry) => Object.fromEntries(entry.mirrors.map((mirror) => [mirr
 const jsCount = (entry) => entry.mirrors.filter((m) => m.engine === 'JS').length;
 const wasmCount = (entry) => entry.mirrors.filter((m) => m.engine === 'WASM').length;
 
-test('nine versions and three clients are on the shelf', () => {
+test('nine versions and five clients are on the shelf', () => {
   assert.deepEqual(
     VERSIONS.map((v) => v.id),
     ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5'],
   );
   assert.deepEqual(
     CLIENTS.map((c) => c.id),
-    ['astra', 'resent', 'ayuncraft'],
+    ['astra', 'resent', 'ayuncraft', 'precision', 'reflex'],
   );
   assert.deepEqual(
     CATALOG.map((entry) => entry.id),
-    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft'],
+    ['1.8.8', '1.5.2', '1.9.4', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.5', 'astra', 'resent', 'ayuncraft', 'precision', 'reflex'],
   );
-  assert.equal(countBuilds(), 39, '30 version builds + 9 client builds');
+  assert.equal(countBuilds(), 42, '30 version builds + 12 client builds');
 });
 
 test('entries are tagged by kind so the page can section them', () => {
@@ -126,7 +126,7 @@ test('EaglercraftZ 1.11.2 has a single mirror and skips the picker', () => {
 
 test('isDirectPlay is true for exactly the single-build entries', () => {
   const direct = CATALOG.filter(isDirectPlay).map((entry) => entry.id);
-  assert.deepEqual(direct, ['1.11.2', 'ayuncraft']);
+  assert.deepEqual(direct, ['1.11.2', 'ayuncraft', 'reflex']);
 });
 
 test('Ayuncraft has its one build and plays straight away', () => {
@@ -232,6 +232,31 @@ test('Resent Client has three plain mirrors, the last one flagged as older', () 
   assert.equal(client.mirrors[1].warn, undefined);
 });
 
+test('Precision Client has two mirrors, the second with texture packs', () => {
+  const client = ENTRY_INDEX.get('precision');
+  assert.equal(client.name, 'Precision Client');
+  assert.deepEqual(urlsOf(client), {
+    'Mirror 1': 'https://gx-launcher.github.io/game/Precision%20Client/index.html',
+    'Mirror 2': 'https://playerepic76.github.io/PrecisionUnblocked/',
+  });
+
+  const packs = client.mirrors[1];
+  assert.match(packs.note, /texture packs/i);
+  assert.notEqual(packs.warn, true, 'it is a nice thing to have, not a caution');
+  assert.equal(client.mirrors[0].note, undefined, 'only the second mirror says so');
+  assert.equal(isDirectPlay(client), false, 'two mirrors is still a choice');
+});
+
+test('Reflex Client has a single mirror and skips the picker', () => {
+  const client = ENTRY_INDEX.get('reflex');
+  assert.equal(client.name, 'Reflex Client');
+  assert.deepEqual(urlsOf(client), {
+    'Mirror 1': 'https://gx-launcher.github.io/game/Reflex%20Client/index.html',
+  });
+  assert.equal(isDirectPlay(client), true);
+  assert.equal(mirrorPath(client, client.mirrors[0]), '/play/reflex/reflex-1');
+});
+
 test('builds without an engine group neutrally', () => {
   const groups = groupMirrors(ENTRY_INDEX.get('resent'));
   assert.equal(groups.length, 1);
@@ -243,6 +268,8 @@ test('engine counts drive the chips on each card', () => {
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.5.2')), { JS: 3, WASM: 1, other: 0 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('astra')), { JS: 2, WASM: 3, other: 0 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('resent')), { JS: 0, WASM: 0, other: 3 });
+  assert.deepEqual(engineCounts(ENTRY_INDEX.get('precision')), { JS: 0, WASM: 0, other: 2 });
+  assert.deepEqual(engineCounts(ENTRY_INDEX.get('reflex')), { JS: 0, WASM: 0, other: 1 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.9.4')), { JS: 0, WASM: 0, other: 2 });
   assert.deepEqual(engineCounts(ENTRY_INDEX.get('1.11.2')), { JS: 0, WASM: 0, other: 1 });
 });
