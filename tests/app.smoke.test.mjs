@@ -148,6 +148,28 @@ test('a lost first keystroke does not force a retype', async () => {
   await settle();
 });
 
+test('the code opens the page on the spot, not on some later event', async () => {
+  click('[data-action="calculator"]');
+  await settle();
+  rowInputs().forEach((input) => type(input, ''));
+  await settle();
+  blurAll();
+
+  typeKeys('MinecraftPls25');
+  // The final character is the one that does the work. Nothing is awaited here:
+  // the page has to be up before the keystroke's own event finishes, because a
+  // page that waits for the browser to echo its URL back can wait forever.
+  document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: '-', bubbles: true, cancelable: true }));
+
+  assert.equal(hash(), '#/play', 'the URL moved');
+  assert.equal(play().hidden, false, 'and the page is already showing');
+  assert.equal(document.querySelector('#app').hidden, true, 'the calculator is away');
+
+  await settle();
+  click('[data-action="calculator"]');
+  await settle();
+});
+
 test('the code is recognised however the text arrives', async () => {
   // Keys are only one way for text to reach a field. A phone keyboard commits a
   // word through composition, an IME sends it whole, a paste lands in one go and

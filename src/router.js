@@ -55,6 +55,7 @@ export class Router {
     this.window = win;
     this.onChange = onChange ?? (() => {});
     this.current = null;
+    this.rendered = null; // the route key that is actually on screen
     this._onHashChange = () => this._emit();
   }
 
@@ -72,20 +73,37 @@ export class Router {
     return this.current;
   }
 
-  /** Navigate to a path like '/play/1.8.8' (a leading # is optional). */
+  /**
+   * Navigate to a path like '/play/1.8.8' (a leading # is optional).
+   *
+   * The URL moves *and* the page is rendered before this returns. It used to be
+   * the URL's job alone: assigning the hash, then waiting for the browser's
+   * hashchange event to draw the new page. An embedded page can have that event
+   * arrive late, arrive not at all, or have the assignment itself refused — and
+   * then the URL says one thing while the screen says another. Worst of all, the
+   * *next* navigation looks like a no-op (the hash is already right) and only
+   * then draws the page, which is what made a secret code seem to need typing
+   * twice: the first attempt cleared the box and went nowhere.
+   */
   navigate(path, { replace = false } = {}) {
     const target = `#${String(path).replace(/^#/, '')}`;
-    if (this.window.location.hash === target) {
-      this._emit();
-      return;
+    const route = parseRoute(target);
+
+    try {
+      if (this.window.location.hash !== target) {
+        if (replace && this.window.history?.replaceState) {
+          this.window.history.replaceState(null, '', target);
+        } else {
+          // Assigning the hash pushes a history entry, so Back works.
+          this.window.location.hash = target;
+        }
+      }
+    } catch {
+      // Refused. The page below still changes, which is the part that matters.
     }
-    if (replace && this.window.history?.replaceState) {
-      this.window.history.replaceState(null, '', target);
-      this._emit();
-    } else {
-      // Assigning the hash pushes a history entry, so Back works.
-      this.window.location.hash = target;
-    }
+
+    // Draw it now. The hashchange, if it comes, finds nothing left to do.
+    this._emit(route);
   }
 
   /** Step up one level, or hand control back to the caller. */
@@ -101,10 +119,17 @@ export class Router {
     this._emit();
   }
 
-  _emit() {
-    const route = parseRoute(this.window.location.hash);
-    if (this.current && this.current.key === route.key) return; // no duplicate work
+  _emit(route = parseRoute(this.window.location.hash)) {
     this.current = route;
-    this.onChange(route);
+    if (this.rendered === route.key) return; // already on screen: no duplicate work
+    this.rendered = route.key;
+    try {
+      this.onChange(route);
+    } catch (error) {
+      // It never made it onto the screen, so don't leave it marked as done —
+      // the next navigation (or focus, or hashchange) should try again.
+      this.rendered = null;
+      throw error;
+    }
   }
 }

@@ -470,6 +470,20 @@ function typeIntoFormulaBox(event) {
  * ------------------------------------------------------------------ */
 
 function triggerUnlock() {
+  // Go first, and only tidy up once the trip has actually happened. If the view
+  // is still the calculator afterwards, nothing is cleared: the text stays where
+  // it is, so nothing is lost and the next keystroke can try again. (Clearing
+  // first is what made a failed trip look like "it disappeared".)
+  const active = document.activeElement;
+  const activeRow = active?.closest?.('.expr-row') ?? null;
+
+  try {
+    router.navigate('/play');
+  } catch {
+    return;
+  }
+  if (router.route.view === 'calculator') return;
+
   // Drop the code so the calculator looks untouched afterwards.
   //
   // The row being typed into is emptied whatever it holds: by the time we get
@@ -478,8 +492,7 @@ function triggerUnlock() {
   // lying in the box. Everything else is scrubbed wherever the code turned up —
   // it can have landed in more than one row — and the remaining fields are put
   // back in step with what is actually being plotted.
-  const active = document.activeElement;
-  const activeId = active?.closest?.('.expr-row')?.dataset.id;
+  const activeId = activeRow?.dataset.id;
 
   for (const item of state.expressions) {
     if (item.id === activeId || isUnlockCode(item.source ?? '')) item.source = '';
@@ -498,8 +511,6 @@ function triggerUnlock() {
 
   syncExpressions();
   persist();
-
-  router.navigate('/play');
   showToast('✦');
 }
 
