@@ -470,15 +470,32 @@ function typeIntoFormulaBox(event) {
  * ------------------------------------------------------------------ */
 
 function triggerUnlock() {
-  // Drop the code so the calculator looks untouched afterwards. It can have
-  // landed in more than one row — or in none at all, when the keystrokes were
-  // picked up before they reached a field — so scrub every trace of it.
+  // Drop the code so the calculator looks untouched afterwards.
+  //
+  // The row being typed into is emptied whatever it holds: by the time we get
+  // here the last keystroke may have been stopped before it landed, so the field
+  // can hold fourteen fifteenths of the code, and that is not something to leave
+  // lying in the box. Everything else is scrubbed wherever the code turned up —
+  // it can have landed in more than one row — and the remaining fields are put
+  // back in step with what is actually being plotted.
+  const active = document.activeElement;
+  const activeId = active?.closest?.('.expr-row')?.dataset.id;
+
   for (const item of state.expressions) {
-    if (item.source && isUnlockCode(item.source)) item.source = '';
+    if (item.id === activeId || isUnlockCode(item.source ?? '')) item.source = '';
   }
+
   for (const input of rowsHost.querySelectorAll('.expr-row__input')) {
-    if (isUnlockCode(input.value)) input.value = '';
+    if (input === active) {
+      input.value = '';
+      continue;
+    }
+    const id = input.closest('.expr-row')?.dataset.id;
+    const item = state.expressions.find((candidate) => candidate.id === id);
+    const next = item ? item.source : isUnlockCode(input.value) ? '' : input.value;
+    if (input.value !== next) input.value = next;
   }
+
   syncExpressions();
   persist();
 
@@ -583,8 +600,30 @@ function reclaimCaret() {
 
 window.addEventListener('load', reclaimCaret);
 window.addEventListener('pageshow', reclaimCaret);
+window.addEventListener('focus', reclaimCaret);
 document.addEventListener('visibilitychange', () => !document.hidden && reclaimCaret());
-document.addEventListener('pointerdown', askForKeyboard, true);
+/**
+ * A click anywhere on the calculator means "I'm here" — put the caret in the
+ * formula box while we have the chance.
+ *
+ * The first keystrokes typed into an embedded view can belong to the page
+ * around it, and the one thing a page is always allowed to do is react to a
+ * click. So the first click gives the caret somewhere to land, and the typing
+ * that follows can't miss. Mice only: on a touch screen this would pop the
+ * keyboard open every time somebody panned the graph.
+ */
+document.addEventListener(
+  'pointerdown',
+  (event) => {
+    askForKeyboard();
+    if (router.route.view !== 'calculator') return;
+    if (event.pointerType && event.pointerType !== 'mouse') return;
+    if (document.activeElement?.closest?.('.expr-row')) return; // already typing
+    if (event.target?.closest?.('button, a, input, textarea, select, [contenteditable]')) return;
+    focusLastInput();
+  },
+  true,
+);
 // The first time the pointer moves over us, take the keyboard too. By then the
 // person is plainly here, and it is the one nudge that keeps a first attempt at
 // typing from going to the page that embeds us.
@@ -604,6 +643,27 @@ document.addEventListener('pointermove', reclaimCaret, { once: true, capture: tr
 let typedTail = '';
 const TYPED_TAIL_LIMIT = 48;
 
+/**
+ * Open the play page if this text is the code.
+ *
+ * Used by every route text can take into the page, because keys are only one of
+ * them: a phone keyboard commits a word through composition, an IME sends it
+ * whole, a paste arrives in one go, and a keyboard that reports its keys as
+ * "Unidentified" produces text without telling us what was pressed. Whatever
+ * the route, the field ends up holding the text — so the fields are watched as
+ * well as the keys, and the code never depends on one particular event.
+ *
+ * @returns {boolean} true when the page is on its way to the play page
+ */
+function unlockIfCode(text) {
+  if (!text || router.route.view !== 'calculator') return false;
+  if (!isUnlockCode(text)) return false;
+  typedTail = '';
+  triggerUnlock();
+  return true;
+}
+
+// The keys, wherever they are heard.
 document.addEventListener(
   'keydown',
   (event) => {
@@ -619,11 +679,31 @@ document.addEventListener(
     if (event.key.length !== 1) return; // Enter, arrows, Tab, Shift…
 
     typedTail = (typedTail + event.key).slice(-TYPED_TAIL_LIMIT);
-    if (!isUnlockCode(typedTail)) return;
+    // What has been typed, and what the field itself holds — a composing
+    // keyboard can commit text that never showed up as a key at all.
+    if (unlockIfCode(typedTail) || unlockIfCode(document.activeElement?.value)) {
+      event.preventDefault(); // this keystroke was the code, not a formula
+    }
+  },
+  true,
+);
 
-    typedTail = '';
-    event.preventDefault(); // this keystroke was the code, not a formula
-    triggerUnlock();
+// The text, however it arrived: typing, composition, autofill, a paste.
+for (const type of ['input', 'change', 'compositionend']) {
+  document.addEventListener(
+    type,
+    (event) => {
+      if (typeof event.target?.value === 'string') unlockIfCode(event.target.value);
+    },
+    true,
+  );
+}
+
+document.addEventListener(
+  'paste',
+  (event) => {
+    const text = event.clipboardData?.getData?.('text') ?? '';
+    if (unlockIfCode(text)) event.preventDefault();
   },
   true,
 );

@@ -181,9 +181,12 @@ export async function bootApp({ width = 900, height = 600, realCanvas = false, u
   const typeKeys = (text) => {
     for (const key of text) {
       const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : document.body;
-      target.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-      // a real browser inserts the character into a focused field
-      if (/^(INPUT|TEXTAREA)$/.test(target.tagName)) {
+      const event = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      const notPrevented = target.dispatchEvent(event);
+      // A real browser inserts the character into a focused field — unless the
+      // keystroke was claimed, which is exactly what happens to the last
+      // character of the secret.
+      if (notPrevented && /^(INPUT|TEXTAREA)$/.test(target.tagName)) {
         target.value += key;
         target.dispatchEvent(new window.Event('input', { bubbles: true }));
       }

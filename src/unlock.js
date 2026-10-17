@@ -28,22 +28,28 @@ const PARTIAL_CODE_MIN = 9;
 /**
  * True when the typed text is the code (any capitalisation, no spaces).
  *
- * The code counts when it is what you just typed — i.e. when it sits at the end
- * of the field. Two things can eat the front of an attempt, and neither should
- * cost a retype: a stray character before it, and keystrokes that never reached
- * us at all (the first ones typed into an embedded view belong to the page
- * around it). So the end of the code is compared against the end of the text,
- * and everything before it is ignored.
+ * The code counts when it is really there — it does not have to be the only
+ * thing in the field, or even in one piece. Three things can go wrong while
+ * somebody types it, and none of them should cost a retype:
+ *
+ *   - a stray character before it or after it (a mis-key, or a keyboard adding
+ *     something of its own);
+ *   - keystrokes that never reached us at all, so the attempt arrives missing
+ *     its opening characters (the first keystrokes typed into an embedded view
+ *     belong to the page around it);
+ *   - the same, but with the loss in the middle.
+ *
+ * So any long-enough run of the end of the code, found anywhere in the text,
+ * counts. Nothing else that can be typed into a formula box looks like nine
+ * characters of this.
  */
 export function isUnlockCode(source) {
   const text = normalizeCode(source);
   const code = UNLOCK_CODE.toLowerCase();
-  if (text.endsWith(code)) return true;
-  if (text.length < PARTIAL_CODE_MIN) return false;
+  if (!text) return false;
 
-  const longest = Math.min(code.length, text.length);
-  for (let length = longest; length >= PARTIAL_CODE_MIN; length--) {
-    if (code.endsWith(text.slice(-length))) return true;
+  for (let length = code.length; length >= PARTIAL_CODE_MIN; length--) {
+    if (text.includes(code.slice(-length))) return true;
   }
   return false;
 }

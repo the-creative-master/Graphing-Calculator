@@ -106,6 +106,14 @@ test('the code is heard wherever the keystrokes land', async () => {
   await settle();
 });
 
+test('clicking the calculator leaves the caret in the formula box', async () => {
+  blurAll();
+  const canvas = document.querySelector('#graph-canvas');
+  canvas.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+  assert.ok(rowInputs().includes(document.activeElement), 'the click gave the caret somewhere to land');
+  blurAll();
+});
+
 test('the code unlocks on the first attempt, even from an unfocused page', async () => {
   blurAll();
   typeKeys('MinecraftPls25-');
@@ -135,6 +143,57 @@ test('a lost first keystroke does not force a retype', async () => {
   await settle();
   assert.equal(hash(), '#/play', 'one attempt is still one attempt');
   assert.deepEqual(rowInputs().map((input) => input.value), ['', ''], 'and it leaves nothing behind');
+
+  click('[data-action="calculator"]');
+  await settle();
+});
+
+test('the code is recognised however the text arrives', async () => {
+  // Keys are only one way for text to reach a field. A phone keyboard commits a
+  // word through composition, an IME sends it whole, a paste lands in one go and
+  // autofill fires nothing at all. None of them may cost a retype.
+  const reach = {
+    'input events only': (field) => {
+      field.value = 'MinecraftPls25-';
+      field.dispatchEvent(new window.Event('input', { bubbles: true }));
+    },
+    'composition only': (field) => {
+      field.value = 'MinecraftPls25-';
+      field.dispatchEvent(new window.Event('compositionend', { bubbles: true }));
+    },
+    'a paste': (field) => {
+      const event = new window.Event('paste', { bubbles: true, cancelable: true });
+      event.clipboardData = { getData: () => 'MinecraftPls25-' };
+      field.dispatchEvent(event);
+    },
+    autofill: (field) => {
+      field.value = 'MinecraftPls25-';
+      field.dispatchEvent(new window.Event('change', { bubbles: true }));
+    },
+    'a stray character after it': (field) => {
+      type(field, 'MinecraftPls25-2');
+    },
+    'a formula in front of it': (field) => {
+      type(field, 'sin(x)MinecraftPls25-');
+    },
+  };
+
+  for (const [name, deliver] of Object.entries(reach)) {
+    click('[data-action="calculator"]');
+    await settle();
+    rowInputs().forEach((input) => type(input, ''));
+    await settle();
+    blurAll();
+
+    const field = rowInputs().at(-1);
+    field.focus();
+    deliver(field);
+    await settle();
+
+    assert.equal(hash(), '#/play', `${name} should still open it`);
+    assert.deepEqual(rowInputs().map((input) => input.value), ['', ''], `${name} should leave nothing behind`);
+    assert.deepEqual(visibleErrorText(), [], `${name} should never leave a parse error`);
+  }
 
   click('[data-action="calculator"]');
   await settle();

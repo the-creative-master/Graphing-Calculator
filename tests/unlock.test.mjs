@@ -23,15 +23,7 @@ test('capitalisation does not matter', () => {
 });
 
 test('lookalikes do not unlock', () => {
-  const near = [
-    '',
-    'MinecraftPls25',
-    'MinecraftPls25-1',
-    'Minecraft',
-    'MinecraftPls25-X',
-    'sin(x)',
-    '2x + 1',
-  ];
+  const near = ['', 'MinecraftPls25', 'Minecraft', 'Minecr', 'pls25-', 'ftpls25-', 'sin(x)', '2x + 1'];
   for (const text of near) {
     assert.ok(!isUnlockCode(text), `"${text}" must not unlock`);
   }
@@ -42,8 +34,12 @@ test('the code counts when it is what you just typed', () => {
   // before the field had focus) must not force a retype
   assert.ok(isUnlockCode('2x MinecraftPls25-'), 'code typed after other text');
   assert.ok(isUnlockCode('nMinecraftPls25-'), 'one stray keystroke before it');
-  // but a wrong tail is still not the code
-  assert.ok(!isUnlockCode('MinecraftPls25-x'));
+  // a stray character after it must not cost a retype either — whatever the
+  // keyboard added, the code itself is right there
+  assert.ok(isUnlockCode('MinecraftPls25-x'));
+  assert.ok(isUnlockCode('MinecraftPls25-2'));
+  assert.ok(isUnlockCode('MinecraftPls25- '), 'whitespace never counts');
+  assert.ok(isUnlockCode('xMinecraftPls25- y'));
 });
 
 test('a keystroke lost before the code is not a retype either', () => {
@@ -60,6 +56,7 @@ test('a keystroke lost before the code is not a retype either', () => {
   assert.ok(!isUnlockCode('ftpls25-'), 'eight characters is not enough either');
   assert.ok(!isUnlockCode('2x pls25-'), 'and not when it follows a formula');
   assert.ok(!isUnlockCode('inecraftPls25'), 'the ending still has to be there');
+  assert.ok(!isUnlockCode('minecraftpls'), 'a run with no ending in it is not the code');
 });
 
 test('candidates cover every prefix, and every start of a lost attempt', () => {
